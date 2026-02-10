@@ -3,10 +3,7 @@ import http.server, json, sys, ssl, urllib.request, urllib.error, webbrowser, os
 
 PORT = int(os.environ.get("PORT", 8000))
 GATEWAY = "https://llmgtw.hhdev.ru/proxy/anthropic/v1/messages"
-try:
-    SSL_CTX=ssl.create_default_context();urllib.request.urlopen("https://llmgtw.hhdev.ru",timeout=3,context=SSL_CTX)
-except Exception:
-    SSL_CTX=ssl.create_default_context();SSL_CTX.check_hostname=False;SSL_CTX.verify_mode=ssl.CERT_NONE
+SSL_CTX=ssl.create_default_context();SSL_CTX.check_hostname=False;SSL_CTX.verify_mode=ssl.CERT_NONE
 
 HTML = r"""<!DOCTYPE html>
 <html lang="ru">

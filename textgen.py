@@ -19,14 +19,10 @@ import urllib.request
 import urllib.error
 import webbrowser
 
-# SSL context: try system certs, fallback to unverified for corp CAs
-try:
-    SSL_CTX = ssl.create_default_context()
-    urllib.request.urlopen("https://llmgtw.hhdev.ru", timeout=3, context=SSL_CTX)
-except Exception:
-    SSL_CTX = ssl.create_default_context()
-    SSL_CTX.check_hostname = False
-    SSL_CTX.verify_mode = ssl.CERT_NONE
+# Corp gateway uses internal CA — skip SSL verify
+SSL_CTX = ssl.create_default_context()
+SSL_CTX.check_hostname = False
+SSL_CTX.verify_mode = ssl.CERT_NONE
 
 PORT = int(os.environ.get("PORT", 8000))
 GATEWAY = "https://llmgtw.hhdev.ru/proxy/anthropic/v1/messages"
