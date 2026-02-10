@@ -1,45 +1,4 @@
-@echo off
-chcp 65001 >nul 2>&1
-title HH TextGen
-
-where python >nul 2>&1
-if %errorlevel%==0 (
-    set PY=python
-    goto :run
-)
-where python3 >nul 2>&1
-if %errorlevel%==0 (
-    set PY=python3
-    goto :run
-)
-where py >nul 2>&1
-if %errorlevel%==0 (
-    set PY=py
-    goto :run
-)
-
-echo.
-echo   Python не найден. Установите Python 3:
-echo   https://www.python.org/downloads/
-echo.
-pause
-exit /b 1
-
-:run
-%PY% -c "import sys; assert sys.version_info>=(3,6), 'Python 3.6+'" 2>nul
-if %errorlevel% neq 0 (
-    echo   Нужен Python 3.6+
-    pause
-    exit /b 1
-)
-
-%PY% -x "%~f0"
-pause
-exit /b 0
-
-#!/usr/bin/env python3
-# --- Python code starts here (skip batch header via -x) ---
-
+@py -x "%~f0" %* 2>nul || python -x "%~f0" %* 2>nul || python3 -x "%~f0" %* 2>nul || (echo Python не найден. Установите: python.org/downloads & pause) & pause & exit /b
 import http.server, json, sys, urllib.request, urllib.error, webbrowser, os
 
 PORT = int(os.environ.get("PORT", 8000))
@@ -166,7 +125,7 @@ class H(http.server.BaseHTTPRequestHandler):
         sys.stderr.write(f"  {a[0]}\n")
 
 s=http.server.HTTPServer(("127.0.0.1",PORT),H)
-print(f"\n  ⚡ HH TextGen: http://localhost:{PORT}\n  Закрыть: Ctrl+C или закрыть это окно\n")
+print(f"\n  HH TextGen: http://localhost:{PORT}\n  Закрыть: Ctrl+C или закрыть это окно\n")
 webbrowser.open(f"http://localhost:{PORT}")
 try:s.serve_forever()
 except KeyboardInterrupt:print("\n  Остановлен.")
