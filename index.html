@@ -223,7 +223,12 @@
 </div>
 
 <script>
-const GATEWAY = 'https://llmgtw.hhdev.ru/proxy/anthropic/v1/messages';
+// If running on localhost (via server.py), use local proxy to avoid CORS.
+// Otherwise, try direct gateway (works if CORS is allowed).
+const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const GATEWAY = isLocal
+    ? '/api/chat'
+    : 'https://llmgtw.hhdev.ru/proxy/anthropic/v1/messages';
 let messages = [];
 let busy = false;
 
