@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "HH TextGen",
+  "version": "1.0",
+  "description": "Chat with Claude via HH corporate gateway",
+  "permissions": [],
+  "host_permissions": [
+    "https://llmgtw.hhdev.ru/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "HH TextGen"
+  },
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}
