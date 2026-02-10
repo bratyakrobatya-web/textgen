@@ -3,7 +3,7 @@
   "name": "HH TextGen",
   "version": "1.0",
   "description": "Chat with Claude via HH corporate gateway",
-  "permissions": [],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://llmgtw.hhdev.ru/*"
   ],
