@@ -7,8 +7,10 @@
   "host_permissions": [
     "https://llmgtw.hhdev.ru/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
-    "default_popup": "popup.html",
     "default_title": "HH TextGen"
   },
   "icons": {
