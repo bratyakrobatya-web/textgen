@@ -209,8 +209,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
-    url = f"http://localhost:{PORT}"
+    port = PORT
+    server = None
+    for attempt in range(50):
+        try:
+            server = http.server.HTTPServer(("127.0.0.1", port), Handler)
+            break
+        except OSError:
+            port += 1
+    if server is None:
+        print("  Не удалось найти свободный порт!")
+        sys.exit(1)
+    url = f"http://localhost:{port}"
     print(f"\n  ⚡ HH TextGen")
     print(f"  Открой в браузере: {url}")
     print(f"  Остановить: Ctrl+C\n")

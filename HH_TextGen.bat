@@ -124,8 +124,12 @@ class H(http.server.BaseHTTPRequestHandler):
     def log_message(self,f,*a):
         sys.stderr.write(f"  {a[0]}\n")
 
-s=http.server.HTTPServer(("127.0.0.1",PORT),H)
-print(f"\n  HH TextGen: http://localhost:{PORT}\n  Закрыть: Ctrl+C или закрыть это окно\n")
-webbrowser.open(f"http://localhost:{PORT}")
+port=PORT;s=None
+for _ in range(50):
+    try:s=http.server.HTTPServer(("127.0.0.1",port),H);break
+    except OSError:port+=1
+if not s:print("Нет свободного порта!");sys.exit(1)
+print(f"\n  HH TextGen: http://localhost:{port}\n  Закрыть: Ctrl+C или закрыть это окно\n")
+webbrowser.open(f"http://localhost:{port}")
 try:s.serve_forever()
 except KeyboardInterrupt:print("\n  Остановлен.")
