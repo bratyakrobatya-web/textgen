@@ -3,10 +3,14 @@
 # Закрыть: Ctrl+C или закрыть окно терминала
 
 python3 - << 'PYEOF'
-import http.server, json, sys, urllib.request, urllib.error, webbrowser, os
+import http.server, json, sys, ssl, urllib.request, urllib.error, webbrowser, os
 
 PORT = int(os.environ.get("PORT", 8000))
 GATEWAY = "https://llmgtw.hhdev.ru/proxy/anthropic/v1/messages"
+try:
+    SSL_CTX=ssl.create_default_context();urllib.request.urlopen("https://llmgtw.hhdev.ru",timeout=3,context=SSL_CTX)
+except Exception:
+    SSL_CTX=ssl.create_default_context();SSL_CTX.check_hostname=False;SSL_CTX.verify_mode=ssl.CERT_NONE
 
 HTML = r"""<!DOCTYPE html>
 <html lang="ru">
@@ -115,7 +119,7 @@ class H(http.server.BaseHTTPRequestHandler):
         body=self.rfile.read(int(self.headers.get("Content-Length",0)))
         req=urllib.request.Request(GATEWAY,data=body,headers={"Content-Type":"application/json","x-api-key":self.headers.get("x-api-key",""),"anthropic-version":"2023-06-01"},method="POST")
         try:
-            with urllib.request.urlopen(req,timeout=120) as r:
+            with urllib.request.urlopen(req,timeout=120,context=SSL_CTX) as r:
                 data=r.read();self.send_response(r.status);self.send_header("Content-Type","application/json");self.end_headers();self.wfile.write(data)
         except urllib.error.HTTPError as e:
             self.send_response(e.code);self.send_header("Content-Type","application/json");self.end_headers();self.wfile.write(e.read())

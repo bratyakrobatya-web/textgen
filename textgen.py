@@ -13,10 +13,20 @@ HH TextGen — чат с Claude через корпоративный gateway.
 import http.server
 import json
 import os
+import ssl
 import sys
 import urllib.request
 import urllib.error
 import webbrowser
+
+# SSL context: try system certs, fallback to unverified for corp CAs
+try:
+    SSL_CTX = ssl.create_default_context()
+    urllib.request.urlopen("https://llmgtw.hhdev.ru", timeout=3, context=SSL_CTX)
+except Exception:
+    SSL_CTX = ssl.create_default_context()
+    SSL_CTX.check_hostname = False
+    SSL_CTX.verify_mode = ssl.CERT_NONE
 
 PORT = int(os.environ.get("PORT", 8000))
 GATEWAY = "https://llmgtw.hhdev.ru/proxy/anthropic/v1/messages"
@@ -180,7 +190,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=120, context=SSL_CTX) as resp:
                 data = resp.read()
                 self.send_response(resp.status)
                 self.send_header("Content-Type", "application/json")
