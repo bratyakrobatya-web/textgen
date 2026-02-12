@@ -172,6 +172,41 @@ styleSelector.querySelectorAll('input[type="radio"]').forEach(radio => {
     });
 });
 
+// Favorite style
+let favStyle = null;
+function updateFavStars() {
+    document.querySelectorAll('.style-fav').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.style === favStyle);
+    });
+}
+document.querySelectorAll('.style-fav').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (favStyle === btn.dataset.style) {
+            favStyle = null; // toggle off
+        } else {
+            favStyle = btn.dataset.style;
+            // Also select this style as current
+            const radio = document.getElementById('style-' + favStyle);
+            if (radio) { radio.checked = true; adStyle = favStyle; saveAdPrefs(); }
+        }
+        chrome.storage.local.set({ ad_fav_style: favStyle || '' });
+        updateFavStars();
+    });
+});
+chrome.storage.local.get(['ad_fav_style'], (d) => {
+    if (d.ad_fav_style) {
+        favStyle = d.ad_fav_style;
+        updateFavStars();
+        // Auto-select favorite on load if no other style was saved
+        if (!adStyle || adStyle === 'balanced') {
+            const radio = document.getElementById('style-' + favStyle);
+            if (radio) { radio.checked = true; adStyle = favStyle; }
+        }
+    }
+});
+
 function saveAdPrefs() {
     chrome.storage.local.set({
         ad_platforms: getSelectedPlatforms(),
@@ -310,7 +345,7 @@ async function generateAdTexts() {
             meta: meta,
         };
         adHistory.unshift(entry);
-        if (adHistory.length > 10) adHistory = adHistory.slice(0, 10);
+        if (adHistory.length > 15) adHistory = adHistory.slice(0, 15);
         historyIndex = 0;
         renderAdCards(texts, meta);
         chrome.storage.local.set({ ad_history: adHistory });
@@ -862,6 +897,61 @@ function deleteHistoryEntry() {
 document.getElementById('historyPrev')?.addEventListener('click', () => navigateHistory(1));
 document.getElementById('historyNext')?.addEventListener('click', () => navigateHistory(-1));
 document.getElementById('historyDel')?.addEventListener('click', deleteHistoryEntry);
+
+// ========================
+// History search
+// ========================
+
+const historySearchBtn = document.getElementById('historySearch');
+const historySearchPanel = document.getElementById('historySearchPanel');
+const historySearchInput = document.getElementById('historySearchInput');
+const historySearchResults = document.getElementById('historySearchResults');
+
+historySearchBtn?.addEventListener('click', () => {
+    historySearchPanel.classList.toggle('open');
+    if (historySearchPanel.classList.contains('open')) {
+        historySearchInput?.focus();
+    } else {
+        historySearchInput.value = '';
+        historySearchResults.innerHTML = '';
+    }
+});
+
+historySearchInput?.addEventListener('input', () => {
+    const q = historySearchInput.value.trim().toLowerCase();
+    if (!q || q.length < 2) { historySearchResults.innerHTML = ''; return; }
+
+    const mo = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+    let html = '';
+    adHistory.forEach((entry, i) => {
+        // Search in label and all text fields
+        const haystack = [
+            entry.label || '',
+            ...(entry.texts || []).map(t => [t.headline, t.subheadline, t.text, t.long_description].filter(Boolean).join(' ')),
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return;
+
+        const d = new Date(entry.ts);
+        const time = d.getDate() + ' ' + mo[d.getMonth()] + ', ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+        const lbl = entry.label || '(без описания)';
+        const active = i === historyIndex ? ' active' : '';
+        html += '<div class="history-search-item' + active + '" data-index="' + i + '"><span>' + escapeHtml(lbl) + '</span><span class="hs-time">' + time + '</span></div>';
+    });
+
+    historySearchResults.innerHTML = html || '<div style="padding:6px 10px;font-size:12px;color:var(--text3)">Ничего не найдено</div>';
+
+    historySearchResults.querySelectorAll('.history-search-item').forEach(el => {
+        el.addEventListener('click', () => {
+            const idx = parseInt(el.dataset.index);
+            historyIndex = idx;
+            renderAdCards(adHistory[idx].texts, adHistory[idx].meta);
+            updateHistoryNav();
+            historySearchPanel.classList.remove('open');
+            historySearchInput.value = '';
+            historySearchResults.innerHTML = '';
+        });
+    });
+});
 
 function escapeHtml(str) {
     const d = document.createElement('div');
