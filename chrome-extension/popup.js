@@ -22,7 +22,7 @@ const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специа
 
 Рекламные системы и лимиты:
 VK:
-- vk_universal: заголовок 3–40 символов, текст 3–220 символов
+- vk_universal: заголовок 3–40 символов, текст 3–220 символов, длинное описание (long_description) 3–500 символов (развёрнутый текст вакансии, допускается до 3 эмодзи)
 - vk_site: заголовок 3–25 символов, текст 3–90 символов
 - vk_lead: заголовок 3–60 символов, текст 3–220 символов
 - vk_carousel: заголовок 3–40 символов, текст 3–47 символов
@@ -36,13 +36,13 @@ Telegram:
 - tgads: заголовок 1–40 символов, текст 1–160 символов. Заголовок — короткая цепляющая фраза (например: «Ищем операторов на производство!»). Не дублируй содержание заголовка в тексте. Добавь 1 эмодзи.
 
 Формат ответа — строго JSON без markdown-обёртки:
-{"texts":[{"system":"точный_id_системы","headline":"заголовок","subheadline":"подзаголовок (только для yandex_search)","text":"основной текст"}]}
+{"texts":[{"system":"точный_id_системы","headline":"заголовок","subheadline":"подзаголовок (только для yandex_search)","text":"основной текст","long_description":"длинное описание (только для vk_universal)"}]}
 
 В поле system — только точный ID (vk_universal, vk_site, vk_lead, vk_carousel, yandex_search, yandex_rsya, telegram_seeds, tgads). Генерируй по одному блоку для каждой запрошенной системы.`;
 
 // Platform metadata
 const PLATFORMS = {
-    vk_universal:   { label: 'VK Универсальная', headline: [3, 40], text: [3, 220] },
+    vk_universal:   { label: 'VK Универсальная', headline: [3, 40], text: [3, 220], long_description: [3, 500], formatting_notes: 'Длинное описание: развёрнутый текст вакансии, допускается до 3 эмодзи.' },
     vk_site:        { label: 'VK Сайт', headline: [3, 25], text: [3, 90] },
     vk_lead:        { label: 'VK Лид-формы', headline: [3, 60], text: [3, 220] },
     vk_carousel:    { label: 'VK Карусель', headline: [3, 40], text: [3, 47] },
@@ -198,7 +198,7 @@ function showSkeletons(count) {
 // ========================
 
 function buildStructuredPrompt(platforms, style, description) {
-    const FIELD_KEYS = ['headline', 'subheadline', 'text'];
+    const FIELD_KEYS = ['headline', 'subheadline', 'text', 'long_description'];
     const systems = platforms.map(id => {
         const p = PLATFORMS[id];
         if (!p) return null;
@@ -343,7 +343,7 @@ async function generateCardVariant(cardIndex) {
     // Init _variants from current data if first time
     if (!item._variants) {
         const v0 = {};
-        for (const k of ['headline', 'subheadline', 'text']) { if (item[k]) v0[k] = item[k]; }
+        for (const k of ['headline', 'subheadline', 'text', 'long_description']) { if (item[k]) v0[k] = item[k]; }
         item._variants = [v0];
         item._vi = 0;
     }
@@ -393,7 +393,7 @@ async function generateCardVariant(cardIndex) {
 
         // Push new variant
         const v = {};
-        for (const k of ['headline', 'subheadline', 'text']) { if (newItem[k]) v[k] = newItem[k]; }
+        for (const k of ['headline', 'subheadline', 'text', 'long_description']) { if (newItem[k]) v[k] = newItem[k]; }
         item._variants.push(v);
         item._vi = item._variants.length - 1;
 
@@ -449,7 +449,7 @@ function switchVariant(cardIndex, delta) {
 
 function applyVariant(item) {
     const v = item._variants[item._vi];
-    for (const k of ['headline', 'subheadline', 'text']) {
+    for (const k of ['headline', 'subheadline', 'text', 'long_description']) {
         if (v[k] !== undefined) item[k] = v[k];
         else delete item[k];
     }
@@ -473,6 +473,7 @@ function updateCardContent(card, item) {
     if (item.headline) fieldsHtml += renderField('Заголовок', item.headline, platform?.headline, 'headline');
     if (item.subheadline) fieldsHtml += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline');
     if (item.text) fieldsHtml += renderField('Текст', item.text, platform?.text, 'text');
+    if (item.long_description) fieldsHtml += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description');
 
     const tmp = document.createElement('div');
     tmp.innerHTML = fieldsHtml;
@@ -495,6 +496,7 @@ function updateCardContent(card, item) {
     if (platform) {
         if (item.headline && platform.headline && item.headline.replace(/\*\*/g,'').length > platform.headline[1]) hasOverLimit = true;
         if (item.text && platform.text && item.text.replace(/\*\*/g,'').length > platform.text[1]) hasOverLimit = true;
+        if (item.long_description && platform.long_description && item.long_description.replace(/\*\*/g,'').length > platform.long_description[1]) hasOverLimit = true;
     }
     const oldShorten = card.querySelector('.ad-card-shorten');
     if (hasOverLimit && !oldShorten) {
@@ -616,11 +618,14 @@ async function shortenCard(cardIndex) {
     if (item.headline && platform.headline) limits.push('Заголовок: \u2264' + platform.headline[1] + ' символов (цель: ' + Math.round(platform.headline[1] * 0.7) + ')');
     if (item.subheadline && platform.subheadline) limits.push('Подзаголовок: \u2264' + platform.subheadline[1] + ' символов (цель: ' + Math.round(platform.subheadline[1] * 0.7) + ')');
     if (item.text && platform.text) limits.push('Текст: \u2264' + platform.text[1] + ' символов (цель: ' + Math.round(platform.text[1] * 0.7) + ')');
+    if (item.long_description && platform.long_description) limits.push('Длинное описание: \u2264' + platform.long_description[1] + ' символов (цель: ' + Math.round(platform.long_description[1] * 0.7) + ')');
 
-    const shortenSystem = 'Ты — редактор-сократитель. Задача — максимально сократить рекламный текст, сохранив смысл и призыв к действию.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных.\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"..."}';
+    const shortenSystem = 'Ты — редактор-сократитель. Задача — максимально сократить рекламный текст, сохранив смысл и призыв к действию.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных.\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"...","long_description":"...(если есть)"}';
     const shortenUser = 'Площадка: ' + platform.label + ' (' + item.system + ')\nТЕКУЩИЕ ТЕКСТЫ:\nЗаголовок: ' + (item.headline || '') +
         (item.subheadline ? '\nПодзаголовок: ' + item.subheadline : '') +
-        '\nТекст: ' + (item.text || '') + '\n\nЛИМИТЫ:\n' + limits.join('\n') +
+        '\nТекст: ' + (item.text || '') +
+        (item.long_description ? '\nДлинное описание: ' + item.long_description : '') +
+        '\n\nЛИМИТЫ:\n' + limits.join('\n') +
         '\n\nСоздай МАКСИМАЛЬНО КОРОТКУЮ версию.';
 
     try {
@@ -645,6 +650,7 @@ async function shortenCard(cardIndex) {
         if (parsed.headline) item.headline = parsed.headline;
         if (parsed.subheadline) item.subheadline = parsed.subheadline;
         if (parsed.text) item.text = parsed.text;
+        if (parsed.long_description) item.long_description = parsed.long_description;
 
         lastResults.texts[cardIndex] = item;
         if (adHistory[historyIndex]) {
@@ -687,6 +693,7 @@ function renderAdCards(texts, meta) {
             if (item.headline && platform.headline && item.headline.replace(/\*\*/g,'').length > platform.headline[1]) hasOverLimit = true;
             if (item.subheadline && platform.subheadline && item.subheadline.replace(/\*\*/g,'').length > platform.subheadline[1]) hasOverLimit = true;
             if (item.text && platform.text && item.text.replace(/\*\*/g,'').length > platform.text[1]) hasOverLimit = true;
+            if (item.long_description && platform.long_description && item.long_description.replace(/\*\*/g,'').length > platform.long_description[1]) hasOverLimit = true;
         }
 
         const hasVariants = item._variants && item._variants.length > 1;
@@ -709,6 +716,7 @@ function renderAdCards(texts, meta) {
         if (item.headline) html += renderField('Заголовок', item.headline, platform?.headline, 'headline');
         if (item.subheadline) html += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline');
         if (item.text) html += renderField('Текст', item.text, platform?.text, 'text');
+        if (item.long_description) html += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description');
         if (meta) html += '<div class="ad-meta">' + escapeHtml(meta) + '</div>';
 
         card.innerHTML = html;
