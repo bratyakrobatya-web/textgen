@@ -96,7 +96,7 @@ chrome.storage.local.get(['hh_token', 'hh_model', 'ad_platforms', 'ad_style', 'a
             cb.closest('.cb-pill').classList.toggle('checked', cb.checked);
         });
     }
-    if (d.ad_description) adDescription.value = d.ad_description;
+    if (d.ad_description) { adDescription.value = d.ad_description; updateDescClear(); }
     if (d.ad_history && d.ad_history.length) {
         adHistory = d.ad_history;
         historyIndex = 0;
@@ -118,8 +118,19 @@ tokenInput.addEventListener('input', () => {
 document.getElementById('model').addEventListener('change', (e) => {
     chrome.storage.local.set({ hh_model: e.target.value });
 });
+const descClear = document.getElementById('descClear');
+function updateDescClear() {
+    if (descClear) descClear.style.display = adDescription.value.trim() ? '' : 'none';
+}
 adDescription.addEventListener('input', () => {
     chrome.storage.local.set({ ad_description: adDescription.value });
+    updateDescClear();
+});
+descClear?.addEventListener('click', () => {
+    adDescription.value = '';
+    chrome.storage.local.set({ ad_description: '' });
+    updateDescClear();
+    adDescription.focus();
 });
 
 // ========================
@@ -569,6 +580,7 @@ async function fetchHHVacancy() {
 
         adDescription.value = parts.join('\n');
         chrome.storage.local.set({ ad_description: adDescription.value });
+        updateDescClear();
     } catch (err) {
         const errDiv = document.createElement('div');
         errDiv.className = 'ad-error';
@@ -950,7 +962,38 @@ async function parseCurrentPage() {
                     '[class*="vacancy"], [class*="job-detail"], [class*="position-detail"]'
                 );
                 const root = mainEl || document.body;
-                // Try to extract structured sections (heading + content pairs)
+
+                // --- Expand hidden content (tabs, accordions, details) ---
+                // 1. Open all <details>
+                root.querySelectorAll('details:not([open])').forEach(d => { d.open = true; d.dataset._wasHidden = '1'; });
+
+                // 2. Find and temporarily reveal hidden tab/accordion panels
+                const hiddenEls = [];
+                const panelSel = [
+                    '[role="tabpanel"]', '.tab-pane', '.tab-content > div',
+                    '[class*="tab-"]', '[class*="tab_"]', '[class*="_tab"]',
+                    '.accordion-body', '.accordion-content', '.collapse', '.panel-collapse',
+                    '[class*="accordion"]', '[class*="collapse"]',
+                ].join(',');
+                try {
+                    root.querySelectorAll(panelSel).forEach(el => {
+                        // Skip tiny elements (likely not content panels)
+                        if (el.scrollHeight < 10 && el.children.length === 0) return;
+                        const cs = getComputedStyle(el);
+                        const isHidden = cs.display === 'none'
+                            || cs.visibility === 'hidden'
+                            || cs.opacity === '0'
+                            || cs.maxHeight === '0px'
+                            || el.hasAttribute('hidden')
+                            || el.getAttribute('aria-hidden') === 'true';
+                        if (isHidden) {
+                            hiddenEls.push({ el, orig: el.style.cssText });
+                            el.style.cssText += ';display:block!important;visibility:visible!important;opacity:1!important;max-height:none!important;overflow:visible!important;height:auto!important;';
+                        }
+                    });
+                } catch (_) { /* selector may fail on some pages — continue */ }
+
+                // --- Extract structured sections (heading + content pairs) ---
                 const sections = [];
                 root.querySelectorAll('h1, h2, h3, h4').forEach(h => {
                     const heading = h.textContent.trim();
@@ -965,8 +1008,12 @@ async function parseCurrentPage() {
                     if (content) sections.push(heading + ':\n' + content);
                 });
                 const structuredText = sections.join('\n\n');
-                // Use structured text if it captured meaningful content, otherwise fall back to innerText
                 const bodyText = (structuredText.length > 200 ? structuredText : root.innerText) || '';
+
+                // --- Restore hidden elements ---
+                hiddenEls.forEach(({ el, orig }) => { el.style.cssText = orig; });
+                root.querySelectorAll('details[data-_washidden]').forEach(d => { d.removeAttribute('open'); d.removeAttribute('data-_washidden'); });
+
                 return {
                     url: location.href,
                     title: title.substring(0, 200),
@@ -1033,6 +1080,7 @@ async function parseCurrentPage() {
 
         adDescription.value = cleaned;
         chrome.storage.local.set({ ad_description: adDescription.value });
+        updateDescClear();
 
         // Success feedback
         btn.classList.add('success');

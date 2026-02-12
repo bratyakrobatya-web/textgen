@@ -164,6 +164,17 @@ body{
 #adDescription:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
 #adDescription::placeholder{color:var(--text3)}
 #adDescription:focus::placeholder{color:rgba(255,255,255,0.2);transition:color 0.3s ease}
+.desc-wrap{position:relative}
+.desc-clear{
+  position:absolute;top:6px;right:6px;
+  width:22px;height:22px;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  border-radius:4px;color:var(--text3);cursor:pointer;
+  transition:all 0.15s ease;
+}
+.desc-clear:hover{background:rgba(233,69,96,0.15);border-color:var(--accent-border);color:var(--accent)}
+.desc-clear:active{transform:scale(0.9)}
 
 /* Actions */
 .ad-actions{display:flex;gap:10px;align-items:center}
@@ -546,7 +557,10 @@ body::before{
       <div class="parse-focus-inner"><textarea id="parseFocusText" rows="2" placeholder="Напр. &quot;только вакансия кассира&quot; или &quot;игнорируй похожие вакансии&quot;"></textarea></div>
     </div>
     <div class="ad-divider">или опишите вручную</div>
-    <textarea id="adDescription" placeholder="Опишите вакансию, ключевые преимущества, целевую аудиторию или вставьте текст лендинга..."></textarea>
+    <div class="desc-wrap">
+      <textarea id="adDescription" placeholder="Опишите вакансию, ключевые преимущества, целевую аудиторию или вставьте текст лендинга..."></textarea>
+      <button class="desc-clear" id="descClear" title="Очистить" style="display:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
   </div>
 
   <div class="ad-actions">
