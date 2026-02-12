@@ -157,10 +157,13 @@ section('background.js');
 const bgCode = fs.readFileSync('/private/tmp/textgen/chrome-extension/background.js', 'utf8');
 assert(bgCode.includes('openPanelOnActionClick'), 'opens panel on action click');
 assert(bgCode.includes("port.name !== 'sidepanel'"), 'listens for sidepanel port');
-assert(bgCode.includes('injectedTabs'), 'tracks injected tabs');
+assert(!bgCode.includes('const injectedTabs'), 'no in-memory injectedTabs (uses session storage)');
+assert(bgCode.includes('storage.session'), 'uses session storage for panel state');
+assert(bgCode.includes('isPanelOpen'), 'has isPanelOpen helper');
 assert(bgCode.includes('DEACTIVATE_FAB'), 'sends deactivation on disconnect');
-assert(bgCode.includes('onActivated'), 'handles tab switches');
-assert(bgCode.includes('onUpdated'), 'handles in-tab navigation');
+assert(bgCode.includes('onActivated'), 'handles tab switches at top level');
+assert(bgCode.includes('onUpdated'), 'handles in-tab navigation at top level');
+assert(bgCode.includes('deactivateAll'), 'deactivates FAB in all tabs on close');
 
 // ========================
 // 7. popup.js structure checks
