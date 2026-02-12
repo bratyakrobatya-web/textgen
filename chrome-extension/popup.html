@@ -92,6 +92,11 @@ body{
   background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;
 }
 .ts{color:var(--green);font-size:9px;display:none;margin-left:6px;animation:fadeIn 0.2s ease-out}
+.parser-mode-group{display:flex;gap:0;margin-bottom:10px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.parser-mode-btn{flex:1;padding:7px 6px;font-size:12px;font-family:inherit;background:var(--bg);color:var(--text3);border:none;cursor:pointer;transition:all 0.2s ease;white-space:nowrap}
+.parser-mode-btn:not(:last-child){border-right:1px solid var(--border)}
+.parser-mode-btn:hover{background:rgba(255,255,255,0.06);color:var(--text2)}
+.parser-mode-btn.active{background:rgba(46,198,209,0.12);color:var(--tg);font-weight:500}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 
 /* === AD TEXTS MODE === */
@@ -540,6 +545,11 @@ body::before{
           <option value="claude-opus-4-5-20251101">Opus 4.5 — умный</option>
         </select>
         <input type="hidden" id="maxTokens" value="4096">
+        <label>Работа парсера</label>
+        <div class="parser-mode-group">
+          <button class="parser-mode-btn active" data-mode="auto">Автоматически</button>
+          <button class="parser-mode-btn" data-mode="manual">Ручной с нормализацией</button>
+        </div>
         <details class="prompt-editor" id="promptEditor">
           <summary>Системный промпт</summary>
           <textarea id="systemPromptText" placeholder="Системный промпт..."></textarea>

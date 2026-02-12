@@ -980,9 +980,40 @@ parseFocusToggle?.addEventListener('click', () => {
 parseFocusText?.addEventListener('input', () => {
     chrome.storage.local.set({ parse_focus: parseFocusText.value });
 });
-chrome.storage.local.get(['parse_focus'], (d) => {
-    if (d.parse_focus) {
-        parseFocusText.value = d.parse_focus;
+// ========================
+// Parser mode: auto vs manual
+// ========================
+
+let parseMode = 'auto'; // 'auto' | 'manual'
+const normalizeBtn = document.getElementById('parseNormalizeBtn');
+
+function applyParseMode(mode) {
+    parseMode = mode;
+    document.querySelectorAll('.parser-mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === mode);
+    });
+    const isManual = mode === 'manual';
+    if (parseFocusToggle) parseFocusToggle.style.display = isManual ? '' : 'none';
+    if (normalizeBtn) normalizeBtn.style.display = isManual ? '' : 'none';
+    if (!isManual) {
+        parseFocusPanel?.classList.remove('open');
+        parseFocusToggle?.classList.remove('active');
+    }
+}
+
+document.querySelectorAll('.parser-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        applyParseMode(mode);
+        chrome.storage.local.set({ parse_mode: mode });
+    });
+});
+
+chrome.storage.local.get(['parse_focus', 'parse_mode'], (d) => {
+    if (d.parse_focus) parseFocusText.value = d.parse_focus;
+    applyParseMode(d.parse_mode || 'auto');
+    // Expand focus panel only in manual mode with saved focus text
+    if (d.parse_focus && parseMode === 'manual') {
         parseFocusPanel?.classList.add('open');
         parseFocusToggle?.classList.add('active');
     }
@@ -1285,6 +1316,61 @@ async function parseCurrentPage() {
         chrome.storage.local.set({ ad_description: adDescription.value });
         updateDescClear();
 
+        // Auto mode: run AI normalization immediately
+        if (parseMode === 'auto') {
+            const token = tokenInput.value.trim();
+            if (!token) {
+                settingsPanel.classList.add('open');
+                tokenInput.focus();
+                btn.innerHTML = origHTML;
+                return;
+            }
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Нормализация...';
+
+            const focusInstruction = parseFocusText?.value.trim() || '';
+            let systemPrompt = PARSE_SYSTEM_PROMPT;
+            if (focusInstruction) {
+                systemPrompt += '\n\nФОКУС ПОЛЬЗОВАТЕЛЯ (наивысший приоритет):\n'
+                    + 'Пользователь просит сфокусироваться на: ' + focusInstruction + '\n'
+                    + 'Правила фокуса:\n'
+                    + '- Ищи ПО СМЫСЛУ и ПО ВХОЖДЕНИЮ, а не по точному совпадению\n'
+                    + '- Учитывай ВСЕ варианты написания: с большой буквы, капслоком, через дефис\n'
+                    + '- Извлеки ВСЮ информацию, связанную с этим запросом\n'
+                    + '- НЕ ОТКАЗЫВАЙ, даже если точного совпадения нет';
+            }
+
+            const resp = await fetch(GATEWAY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
+                body: JSON.stringify({
+                    model: 'claude-haiku-4-5-20251001',
+                    max_tokens: 2048,
+                    system: systemPrompt,
+                    messages: [{ role: 'user', content: rawText }],
+                }),
+            });
+
+            if (!resp.ok) {
+                const t = await resp.text();
+                throw new Error('AI: HTTP ' + resp.status + ' — ' + t.substring(0, 150));
+            }
+
+            const aiData = await resp.json();
+            let cleaned = aiData.content?.[0]?.text || '';
+            if (!cleaned.trim()) throw new Error('AI вернул пустой результат');
+
+            cleaned = cleaned
+                .replace(/\*\*(.+?)\*\*/g, '$1')
+                .replace(/\*(.+?)\*/g, '$1')
+                .replace(/^#{1,4}\s+/gm, '')
+                .replace(/^[-*]\s+/gm, '')
+                .trim();
+
+            adDescription.value = cleaned;
+            chrome.storage.local.set({ ad_description: adDescription.value });
+            updateDescClear();
+        }
+
         // Success feedback
         btn.classList.add('success');
         btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Готово';
@@ -1308,7 +1394,6 @@ async function parseCurrentPage() {
 // Normalize description via AI (Step 2 — separate from parsing)
 // ========================
 
-const normalizeBtn = document.getElementById('parseNormalizeBtn');
 normalizeBtn?.addEventListener('click', normalizeDescription);
 
 async function normalizeDescription() {
