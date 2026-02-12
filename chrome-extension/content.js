@@ -55,7 +55,17 @@
         btn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            chrome.runtime.sendMessage({ type: 'ADD_SELECTION', text });
+            try {
+                chrome.runtime.sendMessage({ type: 'ADD_SELECTION', text });
+            } catch (_) {
+                // Extension context invalidated (extension was updated) — show reload hint
+                btn.style.background = '#dc2626';
+                btn.style.borderColor = '#dc2626';
+                const svg = btn.querySelector('svg');
+                svg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
+                setTimeout(() => { hide(); host?.remove(); host = null; }, 1500);
+                return;
+            }
 
             // Success feedback
             btn.classList.add('ok');
