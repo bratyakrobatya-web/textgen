@@ -857,28 +857,51 @@ document.getElementById('hhUrlBtn')?.addEventListener('click', fetchHHVacancy);
 document.getElementById('hhUrlInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchHHVacancy(); });
 document.getElementById('parsePageBtn')?.addEventListener('click', parseCurrentPage);
 
+// Parse focus toggle
+const parseFocusToggle = document.getElementById('parseFocusToggle');
+const parseFocusPanel = document.getElementById('parseFocusPanel');
+const parseFocusText = document.getElementById('parseFocusText');
+
+parseFocusToggle?.addEventListener('click', () => {
+    parseFocusPanel.classList.toggle('open');
+    parseFocusToggle.classList.toggle('active', parseFocusPanel.classList.contains('open'));
+    if (parseFocusPanel.classList.contains('open')) parseFocusText?.focus();
+});
+parseFocusText?.addEventListener('input', () => {
+    chrome.storage.local.set({ parse_focus: parseFocusText.value });
+});
+chrome.storage.local.get(['parse_focus'], (d) => {
+    if (d.parse_focus) {
+        parseFocusText.value = d.parse_focus;
+        parseFocusPanel?.classList.add('open');
+        parseFocusToggle?.classList.add('active');
+    }
+});
+
 // ========================
 // Parse current page (Side Panel mode)
 // ========================
 
 const PARSE_SYSTEM_PROMPT = `Ты — HR-ассистент. Из сырого текста веб-страницы извлеки ТОЛЬКО информацию, полезную для составления рекламных текстов вакансии.
 
-Извлеки и структурируй:
-- Название должности / профессия
-- Компания и её краткое описание (если есть)
-- Зарплата / условия оплаты
-- Требования к кандидату (опыт, навыки, образование)
-- Обязанности
-- Условия работы (график, формат, локация)
-- Преимущества и бонусы (ДМС, обучение, скидки и т.д.)
-- Контакты или способ отклика (если есть)
+Извлеки и структурируй (в скобках — типичные вариации заголовков на карьерных сайтах):
+- Должность / профессия (Вакансия, Позиция, название в заголовке)
+- Компания и краткое описание (О компании, О нас, Кто мы)
+- Зарплата (Оплата, Доход, Компенсация, Вознаграждение)
+- Обязанности (Чем предстоит заниматься, Задачи, Функционал, Что нужно делать, Роль, Зона ответственности, Ваши задачи, Функциональные обязанности)
+- Требования (Что мы ожидаем, Кого мы ищем, Ожидания, Профиль кандидата, Нам важно, Квалификация, Что для нас важно, Мы ждём от вас)
+- Условия и преимущества (Что мы предлагаем, Почему мы?, Наши преимущества, Мы предлагаем, Бонусы, Плюшки, Льготы и компенсации, ДМС, обучение)
+- Навыки (Ключевые навыки, Hard skills, Стек технологий, Инструменты)
+- Локация и график (Место работы, Формат, График, Удалёнка, Гибрид)
+- Контакты / способ отклика (если есть)
 
 ПРАВИЛА:
-1. Убери всё лишнее: навигацию, рекламу, футеры, куки-баннеры, юридические тексты, отзывы
+1. Убери всё лишнее: навигацию, рекламу, футеры, куки-баннеры, юридические тексты, похожие вакансии, отзывы
 2. Если страница НЕ о вакансии — извлеки ключевую суть для рекламного текста (продукт, услуга, УТП)
 3. Ответ — чистый текст без markdown-разметки, без заголовков секций
-4. Пиши кратко, только факты. Не добавляй от себя.
-5. Максимум 1500 символов.`;
+4. Пиши кратко, только факты. Не добавляй от себя
+5. НЕ пропускай секции — если на странице есть информация о преимуществах, обязанностях или требованиях, она ДОЛЖНА быть в ответе
+6. Будь лаконичен, но не теряй факты. Ориентир — 1500–2500 символов`;
 
 async function parseCurrentPage() {
     const btn = document.getElementById('parsePageBtn');
@@ -917,13 +940,37 @@ async function parseCurrentPage() {
             func: () => {
                 const title = document.title || '';
                 const metaDesc = document.querySelector('meta[name="description"]')?.content || '';
-                const mainEl = document.querySelector('article, main, [role="main"], .vacancy-description, .content, .article');
-                const bodyText = (mainEl || document.body).innerText || '';
+                // Expanded selectors for career sites
+                const mainEl = document.querySelector(
+                    'article, main, [role="main"], ' +
+                    '.vacancy-description, .vacancy-section, .vacancy-body, .vacancy-content, ' +
+                    '.job-description, .job-details, .job-content, ' +
+                    '.content, .article, ' +
+                    '[class*="vacancy"], [class*="job-detail"], [class*="position-detail"]'
+                );
+                const root = mainEl || document.body;
+                // Try to extract structured sections (heading + content pairs)
+                const sections = [];
+                root.querySelectorAll('h1, h2, h3, h4').forEach(h => {
+                    const heading = h.textContent.trim();
+                    if (!heading) return;
+                    let content = '';
+                    let sibling = h.nextElementSibling;
+                    while (sibling && !sibling.matches('h1, h2, h3, h4')) {
+                        content += (sibling.innerText || sibling.textContent || '') + '\n';
+                        sibling = sibling.nextElementSibling;
+                    }
+                    content = content.trim();
+                    if (content) sections.push(heading + ':\n' + content);
+                });
+                const structuredText = sections.join('\n\n');
+                // Use structured text if it captured meaningful content, otherwise fall back to innerText
+                const bodyText = (structuredText.length > 200 ? structuredText : root.innerText) || '';
                 return {
                     url: location.href,
                     title: title.substring(0, 200),
                     metaDescription: metaDesc.substring(0, 300),
-                    bodyText: bodyText.substring(0, 8000),
+                    bodyText: bodyText.substring(0, 12000),
                 };
             },
         });
@@ -937,7 +984,13 @@ async function parseCurrentPage() {
             .join('\n')
             .split('\n').map(l => l.trim()).filter(Boolean).join('\n')
             .replace(/\n{3,}/g, '\n\n')
-            .substring(0, 6000);
+            .substring(0, 10000);
+
+        // Build user message with optional focus instruction
+        const focusInstruction = parseFocusText?.value.trim() || '';
+        let userContent = 'URL: ' + data.url + '\n\n';
+        if (focusInstruction) userContent += 'ИНСТРУКЦИЯ ПОЛЬЗОВАТЕЛЯ: ' + focusInstruction + '\n\n';
+        userContent += rawText;
 
         // Step 2: AI processing via Haiku — extract HR-relevant info
         btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> AI обработка...';
@@ -951,9 +1004,9 @@ async function parseCurrentPage() {
             },
             body: JSON.stringify({
                 model: 'claude-haiku-4-5-20251001',
-                max_tokens: 1024,
+                max_tokens: 2048,
                 system: PARSE_SYSTEM_PROMPT,
-                messages: [{ role: 'user', content: 'URL: ' + data.url + '\n\n' + rawText }],
+                messages: [{ role: 'user', content: userContent }],
             }),
         });
 

@@ -324,6 +324,28 @@ body{
 .parse-page-btn.loading::after{content:'';position:absolute;top:50%;left:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid rgba(46,198,209,0.3);border-top-color:var(--tg);border-radius:50%;animation:spin 0.6s linear infinite}
 .parse-page-btn svg{flex-shrink:0}
 .parse-page-btn.success{border-color:var(--green-border);color:var(--green);background:var(--green-dim)}
+.parse-row{display:flex;gap:6px}
+.parse-row .parse-page-btn{flex:1}
+.parse-focus-toggle{
+  display:flex;align-items:center;justify-content:center;
+  width:36px;flex-shrink:0;
+  background:rgba(255,255,255,0.04);border:1px solid var(--border);
+  border-radius:var(--r-sm);color:var(--text3);cursor:pointer;
+  transition:all 0.2s ease;
+}
+.parse-focus-toggle:hover{background:rgba(255,255,255,0.08);color:var(--text2);border-color:var(--border-hover)}
+.parse-focus-toggle.active{color:var(--tg);border-color:rgba(46,198,209,0.4);background:rgba(46,198,209,0.08)}
+.parse-focus-panel{display:grid;grid-template-rows:0fr;transition:grid-template-rows 0.25s ease-out}
+.parse-focus-panel.open{grid-template-rows:1fr}
+.parse-focus-inner{overflow:hidden}
+.parse-focus-panel textarea{
+  width:100%;margin-top:6px;padding:8px 10px;
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-size:12px;font-family:inherit;line-height:1.4;
+  resize:none;transition:border-color var(--dur) ease,box-shadow var(--dur) ease;
+}
+.parse-focus-panel textarea:focus{border-color:var(--tg);box-shadow:0 0 0 3px var(--tg-dim)}
+.parse-focus-panel textarea::placeholder{color:var(--text3);font-size:11px}
 
 .ad-divider{display:flex;align-items:center;gap:10px;margin:4px 0 8px;font-size:9px;color:var(--text3)}
 .ad-divider::before,.ad-divider::after{content:'';flex:1;height:1px;background:var(--border)}
@@ -516,7 +538,13 @@ body::before{
       <button class="hh-url-btn" id="hhUrlBtn">Загрузить</button>
     </div>
     <div class="ad-divider">или</div>
-    <button class="parse-page-btn" id="parsePageBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Спарсить текущую страницу</button>
+    <div class="parse-row">
+      <button class="parse-page-btn" id="parsePageBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Спарсить текущую страницу</button>
+      <button class="parse-focus-toggle" id="parseFocusToggle" title="Инструкция для парсера"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5z"/><path d="M15 5l4 4"/></svg></button>
+    </div>
+    <div class="parse-focus-panel" id="parseFocusPanel">
+      <div class="parse-focus-inner"><textarea id="parseFocusText" rows="2" placeholder="Напр. &quot;только вакансия кассира&quot; или &quot;игнорируй похожие вакансии&quot;"></textarea></div>
+    </div>
     <div class="ad-divider">или опишите вручную</div>
     <textarea id="adDescription" placeholder="Опишите вакансию, ключевые преимущества, целевую аудиторию или вставьте текст лендинга..."></textarea>
   </div>
