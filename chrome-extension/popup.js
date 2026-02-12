@@ -1,5 +1,91 @@
 const GATEWAY = 'https://llmgtw.hhdev.ru/proxy/anthropic/v1/messages';
-let busy = false;
+let generating = false;
+const busyCards = new Set();
+
+// --- Utilities ---
+function debounce(fn, ms) {
+    let timer;
+    return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function deepClone(obj) {
+    return structuredClone(obj);
+}
+
+function parseJsonResponse(rawText) {
+    const cleaned = rawText.replace(/^```json?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    try { return JSON.parse(cleaned); } catch {}
+    const match = cleaned.match(/\{[\s\S]*?"texts"\s*:\s*\[[\s\S]*?\]\s*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Не удалось разобрать JSON из ответа:\n' + rawText.substring(0, 300));
+}
+
+function parseSingleJsonResponse(rawText) {
+    const cleaned = rawText.replace(/^```json?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    try { return JSON.parse(cleaned); } catch {}
+    const match = cleaned.match(/\{[\s\S]*?\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Не удалось разобрать JSON');
+}
+
+async function callLLM({ system, userMessage, model, maxTokens, timeoutMs = 30000 }) {
+    const token = tokenInput.value.trim();
+    if (!token) throw new Error('API-токен не указан');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const doFetch = async (attempt) => {
+        try {
+            const resp = await fetch(GATEWAY, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': token,
+                    'anthropic-version': '2023-06-01',
+                },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    model: model || document.getElementById('model').value,
+                    max_tokens: maxTokens || parseInt(document.getElementById('maxTokens').value) || 4096,
+                    system,
+                    messages: [{ role: 'user', content: userMessage }],
+                }),
+            });
+            if (!resp.ok) {
+                const t = await resp.text();
+                if (resp.status >= 500 && attempt < 1) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    return doFetch(attempt + 1);
+                }
+                throw new Error('HTTP ' + resp.status + ': ' + t.substring(0, 200));
+            }
+            return resp;
+        } catch (err) {
+            if (err.name === 'AbortError') throw new Error('Таймаут запроса (' + (timeoutMs / 1000) + 's). Проверьте сеть.');
+            if ((err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) && attempt < 1) {
+                await new Promise(r => setTimeout(r, 1000));
+                return doFetch(attempt + 1);
+            }
+            throw err;
+        }
+    };
+
+    try {
+        const resp = await doFetch(0);
+        const data = await resp.json();
+        if (!data.content?.[0]?.text) throw new Error('Некорректный формат ответа API');
+        return data;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// --- Connect to background to signal side panel is open ---
+const _panelPort = chrome.runtime?.connect?.({ name: 'sidepanel' });
 
 // --- SVG Icons ---
 const SVG_CLIPBOARD = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>';
@@ -67,7 +153,6 @@ const settingsPanel = document.getElementById('sp');
 const generateBtn = document.getElementById('generateBtn');
 const adDescription = document.getElementById('adDescription');
 const adResults = document.getElementById('adResults');
-const selectedCountEl = document.getElementById('selectedCount');
 const styleSelector = document.getElementById('styleSelector');
 
 let adStyle = 'balanced';
@@ -109,8 +194,9 @@ chrome.storage.local.get(['hh_token', 'hh_model', 'ad_platforms', 'ad_style', 'a
     if (promptArea) promptArea.value = customPrompt || AD_SYSTEM_PROMPT;
 });
 
+const _saveToken = debounce(() => chrome.storage.local.set({ hh_token: tokenInput.value }), 1000);
 tokenInput.addEventListener('input', () => {
-    chrome.storage.local.set({ hh_token: tokenInput.value });
+    _saveToken();
     const b = document.getElementById('ts');
     b.style.display = 'inline';
     setTimeout(() => b.style.display = 'none', 2000);
@@ -129,8 +215,9 @@ function updateDescClear() {
     if (descClear) descClear.style.display = adDescription.value.trim() ? '' : 'none';
     autoResizeDesc();
 }
+const _saveDesc = debounce(() => chrome.storage.local.set({ ad_description: adDescription.value }), 500);
 adDescription.addEventListener('input', () => {
-    chrome.storage.local.set({ ad_description: adDescription.value });
+    _saveDesc();
     updateDescClear();
 });
 descClear?.addEventListener('click', () => {
@@ -174,9 +261,7 @@ document.querySelectorAll('.cb-pill input').forEach(cb => {
     });
 });
 
-function updateSelectedCount() {
-    // Element removed from DOM — no-op, kept for compatibility
-}
+function updateSelectedCount() {}
 
 function getSelectedPlatforms() {
     return Array.from(document.querySelectorAll('.cb-pill input:checked')).map(cb => cb.value);
@@ -277,8 +362,6 @@ function buildStructuredPrompt(platforms, style, description) {
     }, null, 2);
 }
 
-// per-card variant helpers — see generateCardVariant / switchVariant below
-
 // ========================
 // Generate
 // ========================
@@ -286,7 +369,7 @@ function buildStructuredPrompt(platforms, style, description) {
 generateBtn.addEventListener('click', generateAdTexts);
 
 async function generateAdTexts() {
-    if (busy) return;
+    if (generating) return;
     const token = tokenInput.value.trim();
     if (!token) {
         settingsPanel.classList.add('open');
@@ -308,53 +391,24 @@ async function generateAdTexts() {
 
     generateBtn.disabled = true;
     generateBtn.classList.add('loading');
-    busy = true;
+    generating = true;
     adResults.innerHTML = showSkeletons(platforms.length);
 
     const userMessage = buildStructuredPrompt(platforms, adStyle, description);
 
     try {
         const t0 = performance.now();
-        const resp = await fetch(GATEWAY, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': token,
-                'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-                model: document.getElementById('model').value,
-                max_tokens: parseInt(document.getElementById('maxTokens').value) || 4096,
-                system: customPrompt || AD_SYSTEM_PROMPT,
-                messages: [{ role: 'user', content: userMessage }],
-            }),
+        const data = await callLLM({
+            system: customPrompt || AD_SYSTEM_PROMPT,
+            userMessage,
+            timeoutMs: 30000,
         });
-
         const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-
-        if (!resp.ok) {
-            const t = await resp.text();
-            throw new Error('HTTP ' + resp.status + ': ' + t.substring(0, 200));
-        }
-
-        const data = await resp.json();
-        const rawText = data.content?.[0]?.text || '';
+        const rawText = data.content[0].text;
         const usage = data.usage || {};
         const meta = data.model + ' \u00b7 ' + usage.input_tokens + '\u2192' + usage.output_tokens + ' tok \u00b7 ' + elapsed + 's';
 
-        let parsed;
-        try {
-            const jsonStr = rawText.replace(/^```json?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-            parsed = JSON.parse(jsonStr);
-        } catch {
-            const match = rawText.match(/\{[\s\S]*"texts"[\s\S]*\}/);
-            if (match) {
-                parsed = JSON.parse(match[0]);
-            } else {
-                throw new Error('Failed to parse JSON from response:\n' + rawText.substring(0, 300));
-            }
-        }
-
+        const parsed = parseJsonResponse(rawText);
         const texts = parsed.texts || [];
         const entry = {
             id: Date.now(),
@@ -362,7 +416,7 @@ async function generateAdTexts() {
             label: description.substring(0, 40),
             style: adStyle,
             platforms: platforms.slice(),
-            texts: JSON.parse(JSON.stringify(texts)),
+            texts: deepClone(texts),
             meta: meta,
         };
         adHistory.unshift(entry);
@@ -371,15 +425,11 @@ async function generateAdTexts() {
         renderAdCards(texts, meta);
         chrome.storage.local.set({ ad_history: adHistory });
         updateHistoryNav();
-        // variants are per-card now
     } catch (err) {
         let msg = err.message;
-        if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-            msg = 'Сеть недоступна. Убедитесь, что вы в корпоративной сети.';
-        }
         adResults.innerHTML = '<div class="ad-error">' + escapeHtml(msg) + '</div>';
     } finally {
-        busy = false;
+        generating = false;
         generateBtn.disabled = false;
         generateBtn.classList.remove('loading');
     }
@@ -390,9 +440,8 @@ async function generateAdTexts() {
 // ========================
 
 async function generateCardVariant(cardIndex) {
-    if (busy || !lastResults) return;
-    const token = tokenInput.value.trim();
-    if (!token) return;
+    if (generating || busyCards.has(cardIndex) || !lastResults) return;
+    if (!tokenInput.value.trim()) return;
     const item = lastResults.texts[cardIndex];
     if (!item) return;
 
@@ -408,7 +457,7 @@ async function generateCardVariant(cardIndex) {
     const card = adResults.querySelector('.ad-card[data-index="' + cardIndex + '"]');
     const btn = card?.querySelector('.ad-card-variant-btn');
     if (btn) { btn.disabled = true; btn.classList.add('loading'); }
-    busy = true;
+    busyCards.add(cardIndex);
 
     const entry = adHistory[historyIndex];
     const description = adDescription.value.trim() || entry?.label || '';
@@ -417,30 +466,13 @@ async function generateCardVariant(cardIndex) {
         + '\n\nСоздай ДРУГОЙ вариант текстов, отличающийся от предыдущих по тону и формулировкам.';
 
     try {
-        const t0 = performance.now();
-        const resp = await fetch(GATEWAY, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({
-                model: document.getElementById('model').value,
-                max_tokens: parseInt(document.getElementById('maxTokens').value) || 4096,
-                system: customPrompt || AD_SYSTEM_PROMPT,
-                messages: [{ role: 'user', content: userMessage }],
-            }),
+        const data = await callLLM({
+            system: customPrompt || AD_SYSTEM_PROMPT,
+            userMessage,
+            timeoutMs: 30000,
         });
-        if (!resp.ok) { const t = await resp.text(); throw new Error('HTTP ' + resp.status + ': ' + t.substring(0, 200)); }
-
-        const data = await resp.json();
-        const rawText = data.content?.[0]?.text || '';
-        let parsed;
-        try {
-            parsed = JSON.parse(rawText.replace(/^```json?\s*/i, '').replace(/\s*```\s*$/, '').trim());
-        } catch {
-            const match = rawText.match(/\{[\s\S]*"texts"[\s\S]*\}/);
-            if (match) parsed = JSON.parse(match[0]);
-            else throw new Error('Не удалось разобрать ответ');
-        }
-
+        const rawText = data.content[0].text;
+        const parsed = parseJsonResponse(rawText);
         const newItem = (parsed.texts || [])[0];
         if (!newItem) throw new Error('Пустой ответ');
 
@@ -460,7 +492,7 @@ async function generateCardVariant(cardIndex) {
         updateCardContent(card, item);
 
         // Save to storage
-        adHistory[historyIndex].texts = JSON.parse(JSON.stringify(lastResults.texts));
+        adHistory[historyIndex].texts = deepClone(lastResults.texts);
         chrome.storage.local.set({ ad_history: adHistory });
 
     } catch (err) {
@@ -473,7 +505,7 @@ async function generateCardVariant(cardIndex) {
             setTimeout(() => errEl.remove(), 3000);
         }
     } finally {
-        busy = false;
+        busyCards.delete(cardIndex);
         if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
         if (item._variants && item._variants.length >= 4 && btn) btn.style.display = 'none';
     }
@@ -499,7 +531,7 @@ function switchVariant(cardIndex, delta) {
     updateCardContent(card, item);
 
     // Save
-    adHistory[historyIndex].texts = JSON.parse(JSON.stringify(lastResults.texts));
+    adHistory[historyIndex].texts = deepClone(lastResults.texts);
     chrome.storage.local.set({ ad_history: adHistory });
 }
 
@@ -569,9 +601,6 @@ function updateCardContent(card, item) {
 
     // Update variant nav
     updateCardVariantNav(card, item);
-
-    // Update variant nav visibility
-    updateCardVariantNav(card, item);
 }
 
 function updateCardVariantNav(card, item) {
@@ -606,8 +635,10 @@ async function fetchHHVacancy() {
     btn.disabled = true;
     btn.classList.add('loading');
 
+    const hhAbort = new AbortController();
+    const hhTimer = setTimeout(() => hhAbort.abort(), 10000);
     try {
-        const resp = await fetch('https://api.hh.ru/vacancies/' + match[1]);
+        const resp = await fetch('https://api.hh.ru/vacancies/' + match[1], { signal: hhAbort.signal });
         if (!resp.ok) throw new Error('Вакансия не найдена');
         const data = await resp.json();
 
@@ -640,13 +671,15 @@ async function fetchHHVacancy() {
         chrome.storage.local.set({ ad_description: adDescription.value });
         updateDescClear();
     } catch (err) {
+        const msg = err.name === 'AbortError' ? 'Таймаут запроса к HH API (10s)' : err.message;
         const errDiv = document.createElement('div');
         errDiv.className = 'ad-error';
-        errDiv.textContent = err.message;
+        errDiv.textContent = msg;
         errDiv.style.marginBottom = '8px';
         urlInput.parentElement.after(errDiv);
         setTimeout(() => errDiv.remove(), 3000);
     } finally {
+        clearTimeout(hhTimer);
         btn.disabled = false;
         btn.classList.remove('loading');
     }
@@ -657,9 +690,8 @@ async function fetchHHVacancy() {
 // ========================
 
 async function shortenCard(cardIndex) {
-    if (busy) return;
-    const token = tokenInput.value.trim();
-    if (!token) return;
+    if (generating || busyCards.has(cardIndex)) return;
+    if (!tokenInput.value.trim()) return;
     const item = lastResults?.texts[cardIndex];
     if (!item) return;
     const platform = PLATFORMS[item.system];
@@ -668,7 +700,7 @@ async function shortenCard(cardIndex) {
     const card = adResults.querySelector('.ad-card[data-index="' + cardIndex + '"]');
     const shortenBtn = card?.querySelector('.ad-card-shorten');
     if (shortenBtn) { shortenBtn.disabled = true; shortenBtn.classList.add('loading'); }
-    busy = true;
+    busyCards.add(cardIndex);
 
     const limits = [];
     if (item.headline && platform.headline) limits.push('Заголовок: \u2264' + platform.headline[1] + ' символов (цель: ' + Math.round(platform.headline[1] * 0.7) + ')');
@@ -685,23 +717,14 @@ async function shortenCard(cardIndex) {
         '\n\nСоздай МАКСИМАЛЬНО КОРОТКУЮ версию.';
 
     try {
-        const resp = await fetch(GATEWAY, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({
-                model: document.getElementById('model').value,
-                max_tokens: 1024,
-                system: shortenSystem,
-                messages: [{ role: 'user', content: shortenUser }],
-            }),
+        const data = await callLLM({
+            system: shortenSystem,
+            userMessage: shortenUser,
+            maxTokens: 1024,
+            timeoutMs: 15000,
         });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-        const rawText = data.content?.[0]?.text || '';
-
-        let parsed;
-        try { parsed = JSON.parse(rawText.replace(/^```json?\s*/i, '').replace(/\s*```\s*$/, '').trim()); }
-        catch { const m = rawText.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); else throw new Error('Не удалось разобрать'); }
+        const rawText = data.content[0].text;
+        const parsed = parseSingleJsonResponse(rawText);
 
         if (parsed.headline) item.headline = parsed.headline;
         if (parsed.subheadline) item.subheadline = parsed.subheadline;
@@ -710,14 +733,14 @@ async function shortenCard(cardIndex) {
 
         lastResults.texts[cardIndex] = item;
         if (adHistory[historyIndex]) {
-            adHistory[historyIndex].texts = JSON.parse(JSON.stringify(lastResults.texts));
+            adHistory[historyIndex].texts = deepClone(lastResults.texts);
             chrome.storage.local.set({ ad_history: adHistory });
         }
         renderAdCards(lastResults.texts, lastResults.meta);
     } catch (err) {
         if (shortenBtn) { shortenBtn.textContent = 'Ошибка'; setTimeout(() => { shortenBtn.textContent = 'Сократить'; }, 2000); }
     } finally {
-        busy = false;
+        busyCards.delete(cardIndex);
         if (shortenBtn) { shortenBtn.disabled = false; shortenBtn.classList.remove('loading'); }
     }
 }
@@ -727,7 +750,7 @@ async function shortenCard(cardIndex) {
 // ========================
 
 function renderAdCards(texts, meta) {
-    lastResults = { texts: JSON.parse(JSON.stringify(texts)), meta };
+    lastResults = { texts: deepClone(texts), meta };
     adResults.innerHTML = '';
 
     if (!texts.length) {
@@ -853,6 +876,12 @@ function updateFieldCount(el) {
     }
 }
 
+const _flushEditedResults = debounce(() => {
+    if (!lastResults || historyIndex < 0 || !adHistory[historyIndex]) return;
+    adHistory[historyIndex].texts = deepClone(lastResults.texts);
+    chrome.storage.local.set({ ad_history: adHistory });
+}, 1000);
+
 function saveEditedResults() {
     if (!lastResults || historyIndex < 0 || !adHistory[historyIndex]) return;
     adResults.querySelectorAll('.ad-card[data-index]').forEach(card => {
@@ -861,14 +890,12 @@ function saveEditedResults() {
         if (!item) return;
         card.querySelectorAll('.ad-field-text[data-field]').forEach(el => {
             item[el.dataset.field] = el.textContent;
-            // Also save into current variant
             if (item._variants && item._variants[item._vi]) {
                 item._variants[item._vi][el.dataset.field] = el.textContent;
             }
         });
     });
-    adHistory[historyIndex].texts = JSON.parse(JSON.stringify(lastResults.texts));
-    chrome.storage.local.set({ ad_history: adHistory });
+    _flushEditedResults();
 }
 
 // ========================
@@ -974,11 +1001,7 @@ historySearchInput?.addEventListener('input', () => {
     });
 });
 
-function escapeHtml(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
-}
+// escapeHtml moved to top of file as string-based implementation
 
 // ========================
 // HH URL + More variants
@@ -1327,24 +1350,14 @@ async function parseCurrentPage() {
             }
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Нормализация...';
 
-            const resp = await fetch(GATEWAY, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
-                body: JSON.stringify({
-                    model: 'claude-haiku-4-5-20251001',
-                    max_tokens: 2048,
-                    system: PARSE_SYSTEM_PROMPT,
-                    messages: [{ role: 'user', content: rawText }],
-                }),
+            const aiData = await callLLM({
+                system: PARSE_SYSTEM_PROMPT,
+                userMessage: rawText,
+                model: 'claude-haiku-4-5-20251001',
+                maxTokens: 2048,
+                timeoutMs: 15000,
             });
-
-            if (!resp.ok) {
-                const t = await resp.text();
-                throw new Error('AI: HTTP ' + resp.status + ' — ' + t.substring(0, 150));
-            }
-
-            const aiData = await resp.json();
-            let cleaned = aiData.content?.[0]?.text || '';
+            let cleaned = aiData.content[0].text;
             if (!cleaned.trim()) throw new Error('AI вернул пустой результат');
 
             cleaned = cleaned
@@ -1405,32 +1418,16 @@ async function normalizeDescription() {
     btn.classList.add('loading');
 
     try {
-        const resp = await fetch(GATEWAY, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': token,
-                'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
-                max_tokens: 2048,
-                system: PARSE_SYSTEM_PROMPT,
-                messages: [{ role: 'user', content: rawText }],
-            }),
+        const aiData = await callLLM({
+            system: PARSE_SYSTEM_PROMPT,
+            userMessage: rawText,
+            model: 'claude-haiku-4-5-20251001',
+            maxTokens: 2048,
+            timeoutMs: 15000,
         });
-
-        if (!resp.ok) {
-            const t = await resp.text();
-            throw new Error('AI: HTTP ' + resp.status + ' — ' + t.substring(0, 150));
-        }
-
-        const aiData = await resp.json();
-        let cleaned = aiData.content?.[0]?.text || '';
-
+        let cleaned = aiData.content[0].text;
         if (!cleaned.trim()) throw new Error('AI вернул пустой результат');
 
-        // Strip any markdown formatting that slipped through
         cleaned = cleaned
             .replace(/\*\*(.+?)\*\*/g, '$1')
             .replace(/\*(.+?)\*/g, '$1')

@@ -1,9 +1,15 @@
 // HH TextGen — Floating "+" button for text selection capture
+// Idempotent: safe to re-inject — cleans up previous instance first
+if (window.__hhTextGenFabCleanup) {
+    window.__hhTextGenFabCleanup();
+}
+window.__hhTextGenFabActive = true;
 (() => {
     let host = null;   // Shadow DOM host element
     let shadow = null; // Shadow root
     let btn = null;    // The floating button
-    let hideTimer = null;
+    let active = true;
+    const ac = new AbortController(); // For document listener cleanup
 
     function createButton() {
         host = document.createElement('hh-textgen-fab');
@@ -35,12 +41,19 @@
             </div>
         `;
         btn = shadow.querySelector('.fab');
+
+        // Prevent mousedown on button from clearing page selection
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
         document.documentElement.appendChild(host);
     }
 
     function showAt(x, y, text) {
+        if (!active) return;
         if (!host) createButton();
-        clearTimeout(hideTimer);
 
         // Position near cursor, offset slightly up-right
         const scrollX = window.scrollX || document.documentElement.scrollLeft;
@@ -63,7 +76,7 @@
                 btn.style.borderColor = '#dc2626';
                 const svg = btn.querySelector('svg');
                 svg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
-                setTimeout(() => { hide(); host?.remove(); host = null; }, 1500);
+                setTimeout(() => { hide(); cleanup(); }, 1500);
                 return;
             }
 
@@ -85,9 +98,29 @@
         btn.classList.remove('show');
     }
 
-    // --- Event listeners ---
+    function cleanup() {
+        active = false;
+        hide();
+        ac.abort(); // Remove all document event listeners
+        chrome.runtime.onMessage.removeListener(onMessage);
+        if (host) { host.remove(); host = null; shadow = null; btn = null; }
+        window.__hhTextGenFabActive = false;
+        window.__hhTextGenFabCleanup = null;
+    }
+
+    // Expose cleanup for idempotent re-injection
+    window.__hhTextGenFabCleanup = cleanup;
+
+    // Listen for deactivation from background (named fn for removal)
+    function onMessage(msg) {
+        if (msg?.type === 'DEACTIVATE_FAB') cleanup();
+    }
+    chrome.runtime.onMessage.addListener(onMessage);
+
+    // --- Event listeners (all use AbortController signal for cleanup) ---
 
     document.addEventListener('mouseup', (e) => {
+        if (!active) return;
         // Ignore clicks on our own button
         if (e.target === host || host?.contains(e.target)) return;
 
@@ -96,25 +129,18 @@
 
         // Small delay to let browser finalize selection
         setTimeout(() => {
+            if (!active) return;
             const sel = window.getSelection();
             const text = (sel?.toString() || '').trim();
             if (text.length >= 10) {
-                // Use mouse cursor position — always visible, works for any selection size
                 showAt(mx, my, text);
             } else {
                 hide();
             }
         }, 10);
-    });
+    }, { signal: ac.signal });
 
-    // Hide on scroll or Escape
-    document.addEventListener('scroll', () => hide(), { passive: true });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+    document.addEventListener('scroll', () => hide(), { passive: true, signal: ac.signal });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); }, { signal: ac.signal });
 
-    // Hide if clicking elsewhere (not on the button)
-    document.addEventListener('mousedown', (e) => {
-        if (host && !host.contains(e.target) && btn?.classList.contains('show')) {
-            // Don't hide immediately — mouseup handler will decide
-        }
-    });
 })();
