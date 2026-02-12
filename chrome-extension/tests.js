@@ -237,6 +237,69 @@ assert(popupCode.includes('hhAbort') || popupCode.includes('AbortController'), '
 assert(popupCode.includes("Таймаут запроса к HH API"), 'HH API has timeout error message');
 
 // ========================
+// 11. Double newline collapsing
+// ========================
+
+section('Newline collapsing');
+
+function collapseNewlines(texts) {
+    texts.forEach(t => {
+        if (t.system === 'telegram_seeds' || t.system === 'vk_universal') {
+            for (const k of ['text', 'long_description']) {
+                if (t[k]) t[k] = t[k].replace(/\n{2,}/g, '\n');
+            }
+        }
+    });
+    return texts;
+}
+
+const nlTexts = collapseNewlines([
+    { system: 'vk_universal', text: 'a\n\nb\n\n\nc', long_description: 'x\n\ny' },
+    { system: 'telegram_seeds', text: 'Привет!\n\nМы ищем\n\n\nОператоров' },
+    { system: 'yandex_search', text: 'a\n\nb' }, // should NOT be touched
+]);
+assert(nlTexts[0].text === 'a\nb\nc', 'vk_universal text: collapses \\n\\n to \\n');
+assert(nlTexts[0].long_description === 'x\ny', 'vk_universal long_description: collapses \\n\\n to \\n');
+assert(nlTexts[1].text === 'Привет!\nМы ищем\nОператоров', 'telegram_seeds text: collapses all multiple newlines');
+assert(nlTexts[2].text === 'a\n\nb', 'yandex_search text: untouched');
+
+// ========================
+// 12. Per-field copy button in renderField
+// ========================
+
+section('Per-field copy button');
+
+assert(popupCode.includes('field-copy-btn'), 'popup.js contains field-copy-btn class');
+assert(popupCode.includes("btn.closest('.ad-field').querySelector('.ad-field-text')"), 'field copy reads text from sibling ad-field-text');
+assert(popupCode.includes('navigator.clipboard.writeText(fieldText.textContent'), 'field copy uses clipboard API');
+
+assert(cssCode.includes('.field-copy-btn'), 'CSS has field-copy-btn styles');
+assert(cssCode.includes('.ad-field:hover .field-copy-btn'), 'CSS shows copy button on field hover');
+assert(cssCode.includes('.field-copy-btn.copied'), 'CSS has copied state for field copy button');
+
+// ========================
+// 13. History label without quotes
+// ========================
+
+section('History label (no quotes)');
+
+assert(!popupCode.includes("'«' + lbl"), 'history label does not wrap in quotes');
+assert(popupCode.includes("lbl + (lbl.length >= 40"), 'history label uses plain text with ellipsis');
+
+// ========================
+// 14. History label inline editing
+// ========================
+
+section('History label inline edit');
+
+assert(popupCode.includes('startLabelEdit'), 'has startLabelEdit function');
+assert(popupCode.includes('commitLabelEdit'), 'has commitLabelEdit function');
+assert(popupCode.includes('cancelLabelEdit'), 'has cancelLabelEdit function');
+assert(popupCode.includes("contentEditable"), 'uses contentEditable for label editing');
+assert(cssCode.includes('.ad-history-label.editing'), 'CSS has editing state for history label');
+assert(cssCode.includes('.ad-history-label:hover'), 'CSS has hover state for history label');
+
+// ========================
 // Summary
 // ========================
 

@@ -108,7 +108,7 @@ const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специа
 
 Рекламные системы и лимиты:
 VK:
-- vk_universal: заголовок 3–40 символов, текст 3–220 символов, длинное описание (long_description) 3–500 символов (развёрнутый текст вакансии, допускается до 3 эмодзи)
+- vk_universal: заголовок 3–40 символов, текст 3–220 символов, длинное описание (long_description) 3–500 символов (развёрнутый текст вакансии, допускается до 3 эмодзи). В длинном описании используй одинарные переносы строк (\\n, не \\n\\n).
 - vk_site: заголовок 3–25 символов, текст 3–90 символов
 - vk_lead: заголовок 3–60 символов, текст 3–220 символов
 - vk_carousel: заголовок 3–40 символов, текст 3–47 символов
@@ -118,7 +118,7 @@ VK:
 - yandex_rsya: заголовок 1–56 символов, текст 1–81 символов
 
 Telegram:
-- telegram_seeds: заголовок 1–56 символов, текст 1–764 символов. Используй переносы строк, 1-2 ключевых фразы жирным (**текст**), 1-2 эмодзи. Рекомендуемый объём текста: 450-500 символов.
+- telegram_seeds: заголовок 1–56 символов, текст 1–764 символов. Используй одинарные переносы строк (\\n, не \\n\\n), 1-2 ключевых фразы жирным (**текст**), 1-2 эмодзи. Рекомендуемый объём текста: 450-500 символов.
 - tgads: заголовок 1–40 символов, текст 1–160 символов. Заголовок — короткая цепляющая фраза (например: «Ищем операторов на производство!»). Не дублируй содержание заголовка в тексте. Добавь 1 эмодзи.
 
 Формат ответа — строго JSON без markdown-обёртки:
@@ -410,6 +410,14 @@ async function generateAdTexts() {
 
         const parsed = parseJsonResponse(rawText);
         const texts = parsed.texts || [];
+        // Collapse double newlines to single for verbose platforms
+        texts.forEach(t => {
+            if (t.system === 'telegram_seeds' || t.system === 'vk_universal') {
+                for (const k of ['text', 'long_description']) {
+                    if (t[k]) t[k] = t[k].replace(/\n{2,}/g, '\n');
+                }
+            }
+        });
         const entry = {
             id: Date.now(),
             ts: new Date().toISOString(),
@@ -789,7 +797,7 @@ function renderAdCards(texts, meta) {
         if (hasOverLimit) html += '<button class="ad-card-shorten" data-card-index="' + index + '">Сократить</button>';
         const hideVariantBtn = item._variants && item._variants.length >= 4;
         html += '<button class="ad-card-variant-btn"' + (hideVariantBtn ? ' style="display:none"' : '') + '>+ Вариант</button>';
-        html += '<button class="ad-card-copy">' + SVG_CLIPBOARD + ' Копировать</button>';
+        html += '<button class="ad-card-copy">' + SVG_CLIPBOARD + ' Копировать всё</button>';
         html += '</div></div>';
 
         if (item.headline) html += renderField('Заголовок', item.headline, platform?.headline, 'headline');
@@ -812,9 +820,25 @@ function renderAdCards(texts, meta) {
                 copyBtn.innerHTML = SVG_CHECK + ' Скопировано';
                 copyBtn.classList.add('copied');
                 setTimeout(() => {
-                    copyBtn.innerHTML = SVG_CLIPBOARD + ' Копировать';
+                    copyBtn.innerHTML = SVG_CLIPBOARD + ' Копировать всё';
                     copyBtn.classList.remove('copied');
                 }, 1500);
+            });
+        });
+
+        // Per-field copy buttons
+        card.querySelectorAll('.field-copy-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const fieldText = btn.closest('.ad-field').querySelector('.ad-field-text');
+                if (!fieldText) return;
+                navigator.clipboard.writeText(fieldText.textContent.trim()).then(() => {
+                    btn.innerHTML = SVG_CHECK;
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.innerHTML = SVG_CLIPBOARD;
+                        btn.classList.remove('copied');
+                    }, 1200);
+                });
             });
         });
 
@@ -845,7 +869,7 @@ function renderField(label, value, limit, field) {
     const len = clean.length;
     const display = escapeHtml(value).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*\*/g, '');
     let html = '<div class="ad-field">';
-    html += '<div class="ad-field-label">' + escapeHtml(label) + '</div>';
+    html += '<div class="ad-field-label"><span>' + escapeHtml(label) + '</span><button class="field-copy-btn" title="Копировать поле">' + SVG_CLIPBOARD + '</button></div>';
     html += '<div class="ad-field-text" contenteditable="true" data-field="' + field + '"' + (limit ? ' data-max="' + limit[1] + '"' : '') + '>' + display + '</div>';
     if (limit) {
         const max = limit[1];
@@ -911,7 +935,7 @@ function updateHistoryNav() {
     document.getElementById('historyPos').textContent = (historyIndex + 1) + ' из ' + total;
     const entry = adHistory[historyIndex];
     const lbl = entry.label || '';
-    document.getElementById('historyLabel').textContent = '«' + lbl + (lbl.length >= 40 ? '…' : '') + '»';
+    document.getElementById('historyLabel').textContent = lbl + (lbl.length >= 40 ? '…' : '');
     const d = new Date(entry.ts);
     const mo = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
     document.getElementById('historyTime').textContent = d.getDate() + ' ' + mo[d.getMonth()] + ', ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
@@ -945,6 +969,60 @@ function deleteHistoryEntry() {
 document.getElementById('historyPrev')?.addEventListener('click', () => navigateHistory(1));
 document.getElementById('historyNext')?.addEventListener('click', () => navigateHistory(-1));
 document.getElementById('historyDel')?.addEventListener('click', deleteHistoryEntry);
+
+// ========================
+// History label inline edit
+// ========================
+
+const historyLabelEl = document.getElementById('historyLabel');
+let _labelBeforeEdit = '';
+
+function startLabelEdit() {
+    if (historyIndex < 0 || !adHistory.length) return;
+    const el = historyLabelEl;
+    const entry = adHistory[historyIndex];
+    _labelBeforeEdit = entry.label || '';
+    el.textContent = _labelBeforeEdit;
+    el.contentEditable = 'plaintext-only';
+    el.classList.add('editing');
+    el.focus();
+    // select all text
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+
+function commitLabelEdit() {
+    const el = historyLabelEl;
+    if (!el.classList.contains('editing')) return;
+    el.contentEditable = 'false';
+    el.classList.remove('editing');
+    const raw = el.textContent.trim();
+    if (raw && historyIndex >= 0 && adHistory[historyIndex]) {
+        adHistory[historyIndex].label = raw;
+        chrome.storage.local.set({ ad_history: adHistory });
+    }
+    updateHistoryNav();
+}
+
+function cancelLabelEdit() {
+    const el = historyLabelEl;
+    if (!el.classList.contains('editing')) return;
+    el.contentEditable = 'false';
+    el.classList.remove('editing');
+    updateHistoryNav();
+}
+
+historyLabelEl?.addEventListener('click', startLabelEdit);
+
+historyLabelEl?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commitLabelEdit(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelLabelEdit(); }
+});
+
+historyLabelEl?.addEventListener('blur', commitLabelEdit);
 
 // ========================
 // History search
