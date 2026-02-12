@@ -1,3 +1,2 @@
-chrome.action.onClicked.addListener(() => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('popup.html') });
-});
+// Open side panel on extension icon click (instead of popup/tab)
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });

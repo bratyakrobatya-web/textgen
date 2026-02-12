@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>TextGen — Design Lab</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{height:100%}
+body{
+  min-height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  background:#0a0a14;color:#eee;display:flex;-webkit-font-smoothing:antialiased;
+}
+
+/* === CONTROL PANEL (left) === */
+.controls{
+  width:340px;flex-shrink:0;padding:24px;border-right:1px solid rgba(255,255,255,0.08);
+  overflow-y:auto;height:100vh;position:sticky;top:0;
+}
+.controls h2{font-size:16px;font-weight:700;margin-bottom:4px;letter-spacing:-0.02em}
+.controls .sub{font-size:12px;color:#888;margin-bottom:24px}
+
+.toggle-group{margin-bottom:20px}
+.toggle-group-title{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:10px}
+
+.toggle{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 12px;border-radius:10px;cursor:pointer;
+  transition:background 0.15s ease;margin-bottom:4px;
+}
+.toggle:hover{background:rgba(255,255,255,0.04)}
+
+.toggle-switch{
+  width:36px;height:20px;flex-shrink:0;margin-top:1px;
+  background:rgba(255,255,255,0.1);border-radius:10px;position:relative;
+  transition:background 0.2s ease;
+}
+.toggle-switch::after{
+  content:'';position:absolute;top:2px;left:2px;
+  width:16px;height:16px;border-radius:50%;
+  background:#555;transition:all 0.2s cubic-bezier(0.25,0.8,0.25,1);
+}
+.toggle.active .toggle-switch{background:rgba(233,69,96,0.6)}
+.toggle.active .toggle-switch::after{left:18px;background:#e94560}
+
+.toggle-info{flex:1}
+.toggle-name{font-size:13px;font-weight:600;margin-bottom:2px}
+.toggle-desc{font-size:11px;color:#888;line-height:1.4}
+
+.btn-all{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;margin-top:8px;margin-right:8px;
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
+  border-radius:8px;color:#ccc;font-size:12px;font-weight:500;cursor:pointer;
+  transition:all 0.15s ease;
+}
+.btn-all:hover{background:rgba(255,255,255,0.1);color:#fff}
+
+/* === PREVIEW (right) === */
+.preview-area{
+  flex:1;display:flex;align-items:flex-start;justify-content:center;
+  padding:32px;min-height:100vh;
+  background:repeating-conic-gradient(rgba(255,255,255,0.02) 0% 25%, transparent 0% 50%) 0 0 / 20px 20px;
+}
+.preview-frame{
+  width:420px;border-radius:16px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(255,255,255,0.06);
+}
+
+/* ===== POPUP MOCK STYLES ===== */
+:root{
+  --bg:#1a1a2e;
+  --surface:#16213e;
+  --surface2:#0f3460;
+  --accent:#e94560;
+  --accent-dim:rgba(233,69,96,0.12);
+  --accent-border:rgba(233,69,96,0.4);
+  --text:#eee;
+  --text2:#b8b8cc;
+  --text3:rgba(255,255,255,0.35);
+  --green:#4ade80;
+  --green-dim:rgba(74,222,128,0.12);
+  --green-border:rgba(74,222,128,0.35);
+  --yellow:#facc15;
+  --r:12px;
+  --r-sm:8px;
+  --r-pill:100px;
+  --border:rgba(255,255,255,0.08);
+  --border-hover:rgba(255,255,255,0.16);
+  --ease:cubic-bezier(0.16,1,0.3,1);
+  --ease-std:cubic-bezier(0.4,0,0.2,1);
+  --dur:150ms;
+  --dur-slow:300ms;
+  --vk:#0077FF;--vk-dim:rgba(0,119,255,0.15);--vk-border:rgba(0,119,255,0.5);
+  --yandex:#FC3F1D;--yandex-dim:rgba(252,63,29,0.15);--yandex-border:rgba(252,63,29,0.5);
+  --tg:#2EC6D1;--tg-dim:rgba(46,198,209,0.15);--tg-border:rgba(46,198,209,0.5);
+}
+
+.popup{
+  background:var(--bg);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  color:var(--text);max-height:700px;overflow-y:auto;
+  transition:background 0.4s ease;
+}
+.popup::-webkit-scrollbar{width:6px}
+.popup::-webkit-scrollbar-track{background:transparent}
+.popup::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+
+.ad-form{padding:16px;display:flex;flex-direction:column;gap:14px}
+.ad-section{
+  background:var(--surface);border-radius:var(--r);padding:12px 14px;
+  border:1px solid transparent;
+  transition:all 0.35s ease;
+}
+.ad-section h3{
+  font-size:11px;color:var(--text3);text-transform:uppercase;
+  letter-spacing:.6px;margin-bottom:10px;font-weight:600;
+  transition:all 0.3s ease;
+}
+
+.ad-header-row{display:flex;align-items:center;gap:10px}
+.ad-header-row h1{font-size:18px;font-weight:600;letter-spacing:-0.01em;transition:all 0.3s ease}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.icon-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:32px;height:32px;
+  background:none;border:1px solid transparent;border-radius:var(--r-sm);
+  color:var(--text2);cursor:pointer;
+  transition:background var(--dur) ease,color var(--dur) ease,border-color var(--dur) ease;
+}
+.icon-btn:hover{background:rgba(255,255,255,0.06);color:var(--text);border-color:var(--border)}
+
+.platform-group{padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)}
+.platform-group:last-child{padding-bottom:0;margin-bottom:0;border-bottom:none}
+.platform-group-title{font-size:11px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.platform-group-title .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.platform-group-title[data-platform="vk"]{color:var(--vk)}
+.platform-group-title[data-platform="vk"] .dot{background:var(--vk)}
+.platform-group-title[data-platform="yandex"]{color:var(--yandex)}
+.platform-group-title[data-platform="yandex"] .dot{background:var(--yandex)}
+.platform-group-title[data-platform="tg"]{color:var(--tg)}
+.platform-group-title[data-platform="tg"] .dot{background:var(--tg)}
+
+.cb-grid{display:flex;flex-wrap:wrap;gap:6px}
+.cb-pill{
+  display:inline-flex;align-items:center;
+  padding:6px 14px;font-size:12px;font-weight:500;
+  color:var(--text2);background:rgba(255,255,255,0.04);
+  border:1px solid var(--border);border-radius:var(--r-pill);
+  cursor:pointer;user-select:none;
+  transition:all 0.2s ease;
+}
+.cb-pill:hover{background:rgba(255,255,255,0.08);border-color:var(--border-hover)}
+.cb-pill.checked{color:var(--text);background:var(--accent-dim);border-color:var(--accent-border)}
+.cb-pill[data-platform="vk"].checked{color:var(--vk);background:var(--vk-dim);border-color:var(--vk-border)}
+.cb-pill[data-platform="yandex"].checked{color:var(--yandex);background:var(--yandex-dim);border-color:var(--yandex-border)}
+.cb-pill[data-platform="tg"].checked{color:var(--tg);background:var(--tg-dim);border-color:var(--tg-border)}
+
+.style-selector{
+  display:flex;position:relative;
+  background:rgba(255,255,255,0.06);border-radius:10px;padding:3px;
+}
+.style-selector label{
+  flex:1;text-align:center;padding:8px 0;
+  font-size:12px;font-weight:500;color:var(--text2);
+  cursor:pointer;z-index:1;border-radius:7px;user-select:none;
+  transition:color 0.25s ease;
+}
+.style-selector label:hover{color:var(--text)}
+.style-selector label.active{color:var(--text)}
+.style-indicator{
+  position:absolute;top:3px;bottom:3px;left:calc(33.33% + 3px);width:calc(33.33% - 6px);
+  background:rgba(255,255,255,0.1);border-radius:7px;pointer-events:none;
+  transition:left 0.3s var(--ease-std),width 0.3s var(--ease-std);
+}
+
+textarea.desc{
+  width:100%;padding:10px 12px;margin-top:4px;
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--r-sm);color:var(--text);font-size:13px;
+  font-family:inherit;resize:none;height:72px;line-height:1.4;
+  transition:border-color var(--dur) ease,box-shadow var(--dur) ease;
+}
+textarea.desc:hover{border-color:var(--border-hover)}
+textarea.desc:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim);outline:none}
+textarea.desc::placeholder{color:var(--text3)}
+
+.ad-actions{display:flex;gap:10px;align-items:center}
+.selected-count{font-size:11px;color:var(--text2);font-weight:500}
+
+#generateBtn{
+  flex:1;padding:10px 16px;
+  background:linear-gradient(135deg,var(--accent),#c73a52);
+  color:#fff;border:none;border-radius:var(--r);
+  font-size:13px;font-weight:600;cursor:pointer;
+  position:relative;overflow:hidden;
+  transition:all 0.2s ease;
+}
+#generateBtn:hover{box-shadow:0 4px 16px rgba(233,69,96,0.3);transform:translateY(-1px)}
+
+/* Result card */
+.ad-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px;position:relative;
+  transition:all 0.25s ease;
+}
+.ad-card[data-platform="vk"]{border-left:3px solid var(--vk)}
+.ad-card[data-platform="tg"]{border-left:3px solid var(--tg)}
+.ad-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.ad-card-platform{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.ad-card[data-platform="vk"] .ad-card-platform{color:var(--vk)}
+.ad-card[data-platform="tg"] .ad-card-platform{color:var(--tg)}
+.ad-card-copy{
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  min-width:28px;height:28px;padding:0 10px;
+  background:rgba(255,255,255,0.04);border:1px solid var(--border);
+  color:var(--text2);font-size:11px;font-weight:500;
+  border-radius:var(--r-sm);cursor:pointer;
+  transition:all var(--dur) ease;opacity:0.5;
+}
+.ad-card:hover .ad-card-copy{opacity:1}
+.ad-card-copy:hover{background:rgba(255,255,255,0.08);border-color:var(--border-hover);color:var(--text)}
+
+.ad-field{margin-bottom:8px}
+.ad-field:last-of-type{margin-bottom:0}
+.ad-field-label{font-size:10px;color:var(--text3);margin-bottom:3px;font-weight:500;text-transform:uppercase;letter-spacing:.3px}
+.ad-field-text{font-size:13px;line-height:1.5;white-space:pre-wrap}
+.ad-char-count{font-size:10px;margin-top:3px;font-weight:500}
+.ad-char-count.ok{color:var(--green)}
+.ad-char-count.warn{color:var(--yellow)}
+.ad-char-count.over{color:var(--accent)}
+.ad-char-bar{height:3px;background:rgba(255,255,255,0.06);border-radius:2px;margin-top:4px;overflow:hidden}
+.ad-char-bar-fill{height:100%;border-radius:2px;width:65%;opacity:0.35}
+.ad-char-bar-fill.ok{background:var(--green)}
+.ad-char-bar-fill.warn{background:var(--yellow)}
+
+/* ===== DESIGN UPGRADES (toggled via JS) ===== */
+
+/* 1. Gradient background */
+.popup.fx-gradient-bg{
+  background:linear-gradient(160deg, hsl(240,30%,12%) 0%, hsl(225,35%,8%) 50%, hsl(260,20%,10%) 100%);
+  background-attachment:fixed;
+}
+.popup.fx-gradient-bg::before{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:radial-gradient(ellipse at 30% 0%, rgba(233,69,96,0.06) 0%, transparent 50%),
+             radial-gradient(ellipse at 80% 100%, rgba(46,198,209,0.04) 0%, transparent 50%);
+  pointer-events:none;
+}
+.popup.fx-gradient-bg{position:relative}
+
+/* 2. Layered shadows */
+.popup.fx-shadows .ad-section,
+.popup.fx-shadows .ad-card{
+  box-shadow:
+    inset 0 0 0.5px 1px hsla(0,0%,100%,0.04),
+    0 0 0 1px hsla(0,0%,0%,0.1),
+    0 1px 3px hsla(0,0%,0%,0.15),
+    0 6px 16px hsla(0,0%,0%,0.12);
+}
+
+/* 3. Pill hover effects */
+.popup.fx-pill-hover .cb-pill{
+  transition:all 0.2s cubic-bezier(0.25,0.8,0.25,1);
+}
+.popup.fx-pill-hover .cb-pill:hover{
+  transform:translateY(-2px) scale(1.03);
+  box-shadow:0 4px 12px rgba(0,0,0,0.2);
+}
+.popup.fx-pill-hover .cb-pill:active{
+  transform:translateY(0) scale(0.97);
+  transition-duration:80ms;
+}
+
+/* 4. Custom scrollbar */
+.popup.fx-scrollbar::-webkit-scrollbar{width:5px}
+.popup.fx-scrollbar::-webkit-scrollbar-track{background:rgba(255,255,255,0.02);border-radius:4px;margin:4px 0}
+.popup.fx-scrollbar::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,rgba(233,69,96,0.3),rgba(46,198,209,0.3));
+  border-radius:4px;
+}
+.popup.fx-scrollbar::-webkit-scrollbar-thumb:hover{
+  background:linear-gradient(180deg,rgba(233,69,96,0.5),rgba(46,198,209,0.5));
+}
+
+/* 5. CTA glow */
+.popup.fx-cta-glow #generateBtn{
+  background:linear-gradient(135deg,#e94560 0%,#d63384 50%,#c73a52 100%);
+  box-shadow:0 0 20px rgba(233,69,96,0.25),0 0 60px rgba(233,69,96,0.1);
+}
+.popup.fx-cta-glow #generateBtn:hover{
+  box-shadow:0 4px 24px rgba(233,69,96,0.4),0 0 60px rgba(233,69,96,0.15);
+  transform:translateY(-1px);
+}
+
+/* 6. Glass cards */
+.popup.fx-glass .ad-section{
+  background:rgba(22,33,62,0.5);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.06);
+}
+.popup.fx-glass .ad-card{
+  background:rgba(22,33,62,0.4);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border-color:rgba(255,255,255,0.06);
+}
+
+/* 7. Gradient borders */
+.popup.fx-gradient-border .ad-section{
+  border:1px solid transparent;
+  background:
+    linear-gradient(var(--surface),var(--surface)) padding-box,
+    linear-gradient(135deg,
+      rgba(0,119,255,0.25),
+      rgba(233,69,96,0.2),
+      rgba(46,198,209,0.25)
+    ) border-box;
+}
+.popup.fx-gradient-border .ad-card{
+  border:1px solid transparent;
+  background:
+    linear-gradient(var(--surface),var(--surface)) padding-box,
+    linear-gradient(135deg,
+      rgba(255,255,255,0.08),
+      rgba(233,69,96,0.15),
+      rgba(255,255,255,0.08)
+    ) border-box;
+}
+.popup.fx-gradient-border .ad-card[data-platform="vk"]{
+  border-left:3px solid var(--vk);
+}
+.popup.fx-gradient-border .ad-card[data-platform="tg"]{
+  border-left:3px solid var(--tg);
+}
+
+/* 8. Card hover lift */
+.popup.fx-card-lift .ad-card{
+  transition:transform 0.25s cubic-bezier(0.25,0.8,0.25,1), box-shadow 0.25s ease, border-color 0.15s ease;
+}
+.popup.fx-card-lift .ad-card:hover{
+  transform:translateY(-3px);
+  box-shadow:0 8px 24px rgba(0,0,0,0.2),0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* 9. Smooth state transitions */
+.popup.fx-transitions *{
+  transition-property:background-color,border-color,color,box-shadow,transform,opacity;
+  transition-duration:0.2s;
+  transition-timing-function:ease;
+}
+.popup.fx-transitions .cb-pill{transition-duration:0.25s}
+.popup.fx-transitions .style-indicator{transition-duration:0.35s}
+
+/* 10. Animated heading */
+.popup.fx-heading .ad-header-row h1{
+  background:linear-gradient(135deg,#fff 0%,#b8b8cc 40%,#e94560 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.popup.fx-heading .ad-section h3{
+  background:linear-gradient(90deg,var(--text3) 0%, rgba(233,69,96,0.5) 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+  letter-spacing:0.8px;
+}
+
+/* === BONUS: combined nice combos === */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:0.01ms!important;
+    transition-duration:0.01ms!important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- LEFT: Controls -->
+<div class="controls">
+  <h2>Design Lab</h2>
+  <p class="sub">Включай / выключай эффекты — смотри результат справа</p>
+
+  <div class="toggle-group">
+    <div class="toggle-group-title">Уровень 1 — Быстрый эффект</div>
+
+    <div class="toggle" data-fx="fx-gradient-bg" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">1. Градиентный фон</div>
+        <div class="toggle-desc">Диагональный градиент с цветными пятнами вместо плоского цвета</div>
+      </div>
+    </div>
+
+    <div class="toggle" data-fx="fx-shadows" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">2. Трёхслойные тени</div>
+        <div class="toggle-desc">Inner glow + ambient + contact shadow — карточки «парят»</div>
+      </div>
+    </div>
+
+    <div class="toggle" data-fx="fx-pill-hover" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">3. Hover на пилюлях</div>
+        <div class="toggle-desc">Приподнятие + scale при наведении на кнопки площадок</div>
+      </div>
+    </div>
+
+    <div class="toggle" data-fx="fx-scrollbar" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">4. Стильный скроллбар</div>
+        <div class="toggle-desc">Тонкий, с градиентом от розового к бирюзовому</div>
+      </div>
+    </div>
+
+    <div class="toggle" data-fx="fx-cta-glow" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">5. Свечение CTA</div>
+        <div class="toggle-desc">Мягкое розовое свечение под кнопкой «Сгенерировать»</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toggle-group">
+    <div class="toggle-group-title">Уровень 2 — Стеклянный эффект</div>
+
+    <div class="toggle" data-fx="fx-glass" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">6. Glass-карточки</div>
+        <div class="toggle-desc">Полупрозрачный фон + backdrop blur — эффект матового стекла</div>
+      </div>
+    </div>
+
+    <div class="toggle" data-fx="fx-gradient-border" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">7. Градиентные бордеры</div>
+        <div class="toggle-desc">Переливающиеся границы карточек вместо сплошных</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toggle-group">
+    <div class="toggle-group-title">Уровень 3 — Микроанимации</div>
+
+    <div class="toggle" data-fx="fx-card-lift" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">8. Hover lift карточек</div>
+        <div class="toggle-desc">Результаты приподнимаются при наведении с усилением тени</div>
+      </div>
+    </div>
+
+    <div class="toggle" data-fx="fx-transitions" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">9. Плавные переходы</div>
+        <div class="toggle-desc">Все состояния (выбор, hover) меняются плавно, без рывков</div>
+      </div>
+    </div>
+
+    <div class="toggle" data-fx="fx-heading" onclick="toggleFx(this)">
+      <div class="toggle-switch"></div>
+      <div class="toggle-info">
+        <div class="toggle-name">10. Градиентные заголовки</div>
+        <div class="toggle-desc">Текст заголовков с gradient — subtle переход от белого к розовому</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:8px;display:flex;gap:8px">
+    <button class="btn-all" onclick="setAll(true)">Включить все</button>
+    <button class="btn-all" onclick="setAll(false)">Выключить все</button>
+  </div>
+
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
+    <div class="toggle-group-title" style="margin-bottom:8px">Готовые комбо</div>
+    <button class="btn-all" onclick="applyCombo(['fx-gradient-bg','fx-shadows','fx-cta-glow','fx-transitions'])">
+      Минимальный
+    </button>
+    <button class="btn-all" onclick="applyCombo(['fx-gradient-bg','fx-shadows','fx-pill-hover','fx-scrollbar','fx-cta-glow','fx-transitions','fx-heading'])">
+      Оптимальный
+    </button>
+    <button class="btn-all" onclick="applyCombo(['fx-gradient-bg','fx-shadows','fx-pill-hover','fx-scrollbar','fx-cta-glow','fx-glass','fx-gradient-border','fx-card-lift','fx-transitions','fx-heading'])">
+      Максимальный
+    </button>
+  </div>
+</div>
+
+<!-- RIGHT: Preview -->
+<div class="preview-area">
+  <div class="preview-frame">
+    <div class="popup" id="popup">
+      <div class="ad-form">
+        <!-- Header -->
+        <div class="ad-section">
+          <div class="ad-header-row">
+            <img src="../chrome-extension/hh-logo.png" alt="HH" style="width:22px;height:22px;border-radius:50%;flex-shrink:0">
+            <h1>TextGen</h1>
+            <div class="header-right">
+              <button class="icon-btn" title="Настройки"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M2 14h4m4-6h4m4 8h4"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Platforms -->
+        <div class="ad-section">
+          <h3>Площадки</h3>
+          <div class="platform-group">
+            <div class="platform-group-title" data-platform="vk"><span class="dot"></span> VK</div>
+            <div class="cb-grid">
+              <label class="cb-pill checked" data-platform="vk"><span>Универсальная</span></label>
+              <label class="cb-pill" data-platform="vk" onclick="this.classList.toggle('checked')"><span>Сайт</span></label>
+              <label class="cb-pill checked" data-platform="vk"><span>Лид-формы</span></label>
+              <label class="cb-pill" data-platform="vk" onclick="this.classList.toggle('checked')"><span>Карусель</span></label>
+            </div>
+          </div>
+          <div class="platform-group">
+            <div class="platform-group-title" data-platform="yandex"><span class="dot"></span> Яндекс.Директ</div>
+            <div class="cb-grid">
+              <label class="cb-pill" data-platform="yandex" onclick="this.classList.toggle('checked')"><span>Поиск</span></label>
+              <label class="cb-pill checked" data-platform="yandex"><span>РСЯ</span></label>
+            </div>
+          </div>
+          <div class="platform-group">
+            <div class="platform-group-title" data-platform="tg"><span class="dot"></span> Telegram</div>
+            <div class="cb-grid">
+              <label class="cb-pill checked" data-platform="tg"><span>Посевы</span></label>
+              <label class="cb-pill" data-platform="tg" onclick="this.classList.toggle('checked')"><span>TGads</span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Style -->
+        <div class="ad-section">
+          <h3>Стиль</h3>
+          <div class="style-selector">
+            <label>Креативный</label>
+            <label class="active">Сбалансированный</label>
+            <label>Формальный</label>
+            <div class="style-indicator"></div>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="ad-section">
+          <h3>Описание вакансии / контекст</h3>
+          <textarea class="desc" readonly>Профессия: Кладовщик-комплектовщик (Алабино)
+Компания: Эй Эм Кволити
+Зарплата: от 110 000 до 130 000 RUR (на руки)
+Опыт: От 1 года до 3 лет</textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="ad-actions">
+          <span class="selected-count">Выбрано: 4</span>
+          <button id="generateBtn">Сгенерировать</button>
+        </div>
+
+        <!-- Result cards -->
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+          <div class="ad-card" data-platform="vk">
+            <div class="ad-card-header">
+              <span class="ad-card-platform">VK Универсальная</span>
+              <button class="ad-card-copy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Заголовок</div>
+              <div class="ad-field-text">Кладовщик в Алабино — от 110К</div>
+              <div class="ad-char-count ok">26 / 40</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill ok" style="width:65%"></div></div>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Текст</div>
+              <div class="ad-field-text">Стабильная работа на складе. Зарплата от 110 000 ₽. Опыт от 1 года. Оформление по ТК РФ. Откликайтесь!</div>
+              <div class="ad-char-count ok">98 / 220</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill ok" style="width:45%"></div></div>
+            </div>
+          </div>
+
+          <div class="ad-card" data-platform="tg">
+            <div class="ad-card-header">
+              <span class="ad-card-platform">Telegram Посевы</span>
+              <button class="ad-card-copy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Заголовок</div>
+              <div class="ad-field-text">📦 Кладовщик в Алабино — зарплата до 130К!</div>
+              <div class="ad-char-count warn">43 / 56</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill warn" style="width:77%"></div></div>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Текст</div>
+              <div class="ad-field-text">Компания «Эй Эм Кволити» ищет **кладовщика-комплектовщика** в Алабино.
+
+💰 Зарплата: 110 000 — 130 000 ₽ на руки
+📋 Оформление по ТК РФ
+⏰ Стабильный график
+
+Нужен опыт от 1 года. Переходите по ссылке!</div>
+              <div class="ad-char-count ok">215 / 764</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill ok" style="width:28%"></div></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const popup = document.getElementById('popup');
+
+// Make pills toggleable
+document.querySelectorAll('.popup .cb-pill').forEach(pill => {
+  pill.addEventListener('click', () => pill.classList.toggle('checked'));
+});
+
+function toggleFx(el) {
+  el.classList.toggle('active');
+  const fx = el.dataset.fx;
+  popup.classList.toggle(fx);
+}
+
+function setAll(on) {
+  document.querySelectorAll('.toggle').forEach(t => {
+    const has = t.classList.contains('active');
+    if (on && !has) { t.classList.add('active'); popup.classList.add(t.dataset.fx); }
+    if (!on && has) { t.classList.remove('active'); popup.classList.remove(t.dataset.fx); }
+  });
+}
+
+function applyCombo(fxList) {
+  // Reset all
+  setAll(false);
+  // Enable specified
+  document.querySelectorAll('.toggle').forEach(t => {
+    if (fxList.includes(t.dataset.fx)) {
+      t.classList.add('active');
+      popup.classList.add(t.dataset.fx);
+    }
+  });
+}
+</script>
+</body>
+</html>

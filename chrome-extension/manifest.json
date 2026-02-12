@@ -1,14 +1,19 @@
 {
   "manifest_version": 3,
   "name": "HH TextGen",
-  "version": "1.0",
-  "description": "Chat with Claude via HH corporate gateway",
-  "permissions": ["storage"],
+  "version": "1.1",
+  "description": "Генератор рекламных текстов для HR",
+  "permissions": ["storage", "sidePanel", "activeTab", "scripting"],
   "host_permissions": [
-    "https://llmgtw.hhdev.ru/*"
+    "https://llmgtw.hhdev.ru/*",
+    "https://api.hh.ru/*",
+    "*://*/*"
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
   },
   "action": {
     "default_title": "HH TextGen"

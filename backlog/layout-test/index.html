@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Layout Playground</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#1a1a2e;--surface:#16213e;
+  --accent:#e94560;--accent-dim:rgba(233,69,96,0.12);--accent-border:rgba(233,69,96,0.4);
+  --text:#eee;--text2:#b8b8cc;--text3:rgba(255,255,255,0.35);
+  --border:rgba(255,255,255,0.08);--border-hover:rgba(255,255,255,0.16);
+  --r:12px;--r-sm:8px;--r-pill:100px;
+  --vk:#0077FF;--vk-dim:rgba(0,119,255,0.15);--vk-border:rgba(0,119,255,0.5);
+  --yandex:#FC3F1D;--yandex-dim:rgba(252,63,29,0.15);--yandex-border:rgba(252,63,29,0.5);
+  --tg:#2EC6D1;--tg-dim:rgba(46,198,209,0.15);--tg-border:rgba(46,198,209,0.5);
+  --green:#4ade80;--yellow:#facc15;
+}
+body{
+  min-height:100vh;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  background:#0a0a14;color:var(--text);display:flex;-webkit-font-smoothing:antialiased;
+}
+
+/* === CONTROLS === */
+.controls{
+  width:300px;flex-shrink:0;padding:20px;
+  border-right:1px solid rgba(255,255,255,0.06);
+  overflow-y:auto;height:100vh;position:sticky;top:0;z-index:2;
+  background:#0a0a14;
+}
+.controls h2{font-size:15px;font-weight:700;margin-bottom:14px}
+.ctrl-group{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.05)}
+.ctrl-group:last-child{border-bottom:none}
+.ctrl-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:8px}
+.ctrl-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.ctrl-row label{font-size:11px;color:var(--text2);min-width:80px;flex-shrink:0}
+.ctrl-row input[type="range"]{flex:1;accent-color:var(--vk);height:3px}
+.ctrl-row .val{font-size:11px;color:var(--vk);font-weight:600;min-width:36px;text-align:right;font-family:'SF Mono',Monaco,Consolas,monospace}
+
+.css-output{
+  margin-top:12px;padding:8px;
+  background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:8px;
+  font-family:'SF Mono',Monaco,Consolas,monospace;font-size:10px;
+  color:var(--tg);line-height:1.5;word-break:break-all;
+  max-height:200px;overflow-y:auto;white-space:pre-wrap;
+}
+.btn-copy{
+  margin-top:6px;padding:5px 12px;width:100%;
+  background:rgba(0,119,255,0.15);border:1px solid rgba(0,119,255,0.4);
+  border-radius:6px;color:var(--vk);font-size:11px;font-weight:500;
+  cursor:pointer;transition:all 0.15s ease;
+}
+.btn-copy:hover{background:rgba(0,119,255,0.25)}
+
+.preset-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.preset{
+  padding:5px 10px;font-size:10px;font-weight:600;
+  color:var(--text2);background:rgba(255,255,255,0.04);
+  border:1px solid var(--border);border-radius:100px;
+  cursor:pointer;transition:all 0.15s ease;
+}
+.preset:hover{background:rgba(255,255,255,0.08);color:#fff}
+.preset.active{color:var(--vk);background:rgba(0,119,255,0.15);border-color:rgba(0,119,255,0.5)}
+
+/* === PREVIEW === */
+.preview-area{
+  flex:1;display:flex;justify-content:center;
+  padding:24px;min-height:100vh;position:relative;
+  background:repeating-conic-gradient(rgba(255,255,255,0.015) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
+}
+.preview-frame{
+  border-radius:16px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(255,255,255,0.06);
+  align-self:flex-start;position:sticky;top:24px;
+  transition:width 0.3s ease;
+}
+
+/* === POPUP === */
+.popup{
+  background:linear-gradient(160deg,hsl(240,30%,12%) 0%,hsl(225,35%,8%) 50%,hsl(260,20%,10%) 100%);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  color:var(--text);overflow-y:auto;position:relative;
+}
+.popup::before{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;
+  background:radial-gradient(ellipse at 30% 0%,rgba(233,69,96,0.06) 0%,transparent 50%),
+             radial-gradient(ellipse at 80% 100%,rgba(46,198,209,0.04) 0%,transparent 50%);
+}
+.ad-form{padding:16px;display:flex;flex-direction:column;position:relative;z-index:1}
+
+.ad-section{
+  border-radius:var(--r);padding:12px 14px;
+  border:1px solid transparent;
+  background:linear-gradient(var(--surface),var(--surface)) padding-box,
+    linear-gradient(135deg,rgba(0,119,255,0.2),rgba(233,69,96,0.15),rgba(46,198,209,0.2)) border-box;
+  box-shadow:inset 0 0 0.5px 1px hsla(0,0%,100%,0.04),0 0 0 1px hsla(0,0%,0%,0.1),0 1px 3px hsla(0,0%,0%,0.15),0 6px 16px hsla(0,0%,0%,0.12);
+}
+.ad-header-row{display:flex;align-items:center;gap:10px}
+.ad-header-row h1{font-weight:600;letter-spacing:-0.01em;
+  background:radial-gradient(ellipse at 39% 31%,#d4c2ff 33%,rgba(36,20,255,1));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.header-right{margin-left:auto}
+.icon-btn{display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:none;border:1px solid transparent;border-radius:8px;color:var(--text2);cursor:pointer}
+
+.ad-section h3{
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;font-weight:600;
+  background:linear-gradient(174deg,rgba(212,194,255,1),rgba(36,20,255,0.94));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+
+.platform-group{padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)}
+.platform-group:last-child{padding-bottom:0;margin-bottom:0;border-bottom:none}
+.platform-group-title{font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.platform-group-title .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.cb-grid{display:flex;flex-wrap:wrap;gap:6px}
+.cb-pill{
+  display:inline-flex;align-items:center;font-weight:500;
+  color:var(--text2);background:rgba(255,255,255,0.04);
+  border:1px solid var(--border);border-radius:var(--r-pill);
+  cursor:pointer;transition:all 0.2s cubic-bezier(0.25,0.8,0.25,1);
+}
+.cb-pill:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 4px 12px rgba(0,0,0,0.2)}
+.cb-pill.on[data-p="vk"]{color:var(--vk);background:var(--vk-dim);border-color:var(--vk-border)}
+.cb-pill.on[data-p="yandex"]{color:var(--yandex);background:var(--yandex-dim);border-color:var(--yandex-border)}
+.cb-pill.on[data-p="tg"]{color:var(--tg);background:var(--tg-dim);border-color:var(--tg-border)}
+
+.style-selector{display:flex;position:relative;background:rgba(255,255,255,0.06);border-radius:10px;padding:3px}
+.style-selector label{flex:1;text-align:center;padding:8px 0;font-weight:500;color:var(--text2);border-radius:7px;cursor:pointer}
+.style-selector label.active{color:var(--text)}
+.style-indicator{position:absolute;top:3px;bottom:3px;left:calc(33.33% + 3px);width:calc(33.33% - 6px);background:rgba(255,255,255,0.1);border-radius:7px;pointer-events:none}
+
+.hh-url-row{display:flex;gap:8px;margin-bottom:8px}
+.hh-url-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit}
+.hh-url-btn{background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-weight:500;cursor:pointer;white-space:nowrap}
+.ad-divider{display:flex;align-items:center;gap:10px;margin:4px 0 8px;color:var(--text3)}
+.ad-divider::before,.ad-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+textarea.desc{
+  width:100%;background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--r-sm);color:var(--text);font-family:inherit;
+  resize:vertical;min-height:70px;line-height:1.4;
+}
+textarea.desc::placeholder{color:var(--text3)}
+
+.ad-actions{display:flex;gap:10px;align-items:center}
+.selected-count{color:var(--text2);font-weight:500}
+#generateBtn{
+  flex:1;background:linear-gradient(135deg,#e94560 0%,#d63384 50%,#c73a52 100%);
+  color:#fff;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;
+  box-shadow:0 0 20px rgba(233,69,96,0.25),0 0 60px rgba(233,69,96,0.1);
+}
+
+/* Result cards */
+.ad-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);position:relative;
+  box-shadow:inset 0 0 0.5px 1px hsla(0,0%,100%,0.04),0 0 0 1px hsla(0,0%,0%,0.1),0 1px 3px hsla(0,0%,0%,0.15),0 6px 16px hsla(0,0%,0%,0.12);
+  transition:transform 0.25s cubic-bezier(0.25,0.8,0.25,1),box-shadow 0.25s ease;
+}
+.ad-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,0.2)}
+.ad-card[data-platform="vk"]{border-left:3px solid var(--vk)}
+.ad-card[data-platform="tg"]{border-left:3px solid var(--tg)}
+.ad-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.ad-card-platform{font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.ad-card[data-platform="vk"] .ad-card-platform{color:var(--vk)}
+.ad-card[data-platform="tg"] .ad-card-platform{color:var(--tg)}
+.ad-field{margin-bottom:8px}.ad-field:last-of-type{margin-bottom:0}
+.ad-field-label{color:var(--text3);margin-bottom:3px;font-weight:500;text-transform:uppercase;letter-spacing:.3px}
+.ad-field-text{line-height:1.5;white-space:pre-wrap}
+.ad-char-count{margin-top:3px;font-weight:500}
+.ad-char-count.ok{color:var(--green)}
+.ad-char-count.warn{color:var(--yellow)}
+.ad-char-bar{height:3px;background:rgba(255,255,255,0.06);border-radius:2px;margin-top:4px;overflow:hidden}
+.ad-char-bar-fill{height:100%;border-radius:2px;opacity:0.35}
+.ad-char-bar-fill.ok{background:var(--green)}
+.ad-char-bar-fill.warn{background:var(--yellow)}
+
+.ad-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;color:var(--text3);text-align:center;gap:8px}
+.ad-empty-icon{opacity:0.5}
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <h2>Layout Playground</h2>
+
+  <div class="preset-row">
+    <div class="preset" onclick="applyPreset('compact')">Compact</div>
+    <div class="preset active" onclick="applyPreset('default')">Default</div>
+    <div class="preset" onclick="applyPreset('large')">Large</div>
+    <div class="preset" onclick="applyPreset('xl')">XL</div>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label">Ширина</div>
+    <div class="ctrl-row">
+      <label>Контейнер</label>
+      <input type="range" id="maxWidth" min="360" max="1000" value="600">
+      <span class="val" id="maxWidthVal">600</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Padding</label>
+      <input type="range" id="formPad" min="8" max="32" value="16">
+      <span class="val" id="formPadVal">16</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Gap секций</label>
+      <input type="range" id="sectionGap" min="6" max="40" value="18">
+      <span class="val" id="sectionGapVal">18</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Pad секции</label>
+      <input type="range" id="sectionPad" min="6" max="24" value="12">
+      <span class="val" id="sectionPadVal">12</span>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label">Заголовки</div>
+    <div class="ctrl-row">
+      <label>Title (h1)</label>
+      <input type="range" id="titleSize" min="14" max="32" value="20">
+      <span class="val" id="titleSizeVal">20</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Секция (h3)</label>
+      <input type="range" id="sectionTitle" min="8" max="18" value="12">
+      <span class="val" id="sectionTitleVal">12</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Платформа</label>
+      <input type="range" id="platformTitle" min="8" max="16" value="12">
+      <span class="val" id="platformTitleVal">12</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Лого</label>
+      <input type="range" id="logoSize" min="16" max="40" value="24">
+      <span class="val" id="logoSizeVal">24</span>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label">Элементы</div>
+    <div class="ctrl-row">
+      <label>Пилюли</label>
+      <input type="range" id="pillSize" min="9" max="18" value="14">
+      <span class="val" id="pillSizeVal">14</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Pill pad V</label>
+      <input type="range" id="pillPadV" min="3" max="12" value="6">
+      <span class="val" id="pillPadVVal">6</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Pill pad H</label>
+      <input type="range" id="pillPadH" min="6" max="24" value="14">
+      <span class="val" id="pillPadHVal">14</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Стиль</label>
+      <input type="range" id="styleSize" min="9" max="18" value="14">
+      <span class="val" id="styleSizeVal">14</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Поля ввода</label>
+      <input type="range" id="inputSize" min="10" max="20" value="15">
+      <span class="val" id="inputSizeVal">15</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Input pad</label>
+      <input type="range" id="inputPad" min="4" max="16" value="8">
+      <span class="val" id="inputPadVal">8</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Кнопка CTA</label>
+      <input type="range" id="ctaSize" min="11" max="20" value="15">
+      <span class="val" id="ctaSizeVal">15</span>
+    </div>
+    <div class="ctrl-row">
+      <label>CTA pad</label>
+      <input type="range" id="ctaPad" min="6" max="18" value="10">
+      <span class="val" id="ctaPadVal">10</span>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label">Карточки результатов</div>
+    <div class="ctrl-row">
+      <label>Card pad</label>
+      <input type="range" id="cardPad" min="8" max="24" value="14">
+      <span class="val" id="cardPadVal">14</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Card gap</label>
+      <input type="range" id="cardGap" min="4" max="20" value="10">
+      <span class="val" id="cardGapVal">10</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Платф. label</label>
+      <input type="range" id="cardPlatform" min="8" max="16" value="11">
+      <span class="val" id="cardPlatformVal">11</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Field label</label>
+      <input type="range" id="fieldLabel" min="7" max="14" value="11">
+      <span class="val" id="fieldLabelVal">11</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Field text</label>
+      <input type="range" id="fieldText" min="10" max="20" value="15">
+      <span class="val" id="fieldTextVal">15</span>
+    </div>
+    <div class="ctrl-row">
+      <label>Счётчик</label>
+      <input type="range" id="charCount" min="7" max="14" value="11">
+      <span class="val" id="charCountVal">11</span>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label">CSS</div>
+    <div class="css-output" id="cssOutput"></div>
+    <button class="btn-copy" id="btnCopy">Скопировать CSS</button>
+  </div>
+</div>
+
+<!-- Preview -->
+<div class="preview-area">
+  <div class="preview-frame" id="frame">
+    <div class="popup" id="popup">
+      <div class="ad-form" id="adForm">
+        <!-- Header -->
+        <div class="ad-section">
+          <div class="ad-header-row">
+            <img id="logo" src="../../chrome-extension/hh-logo.png" alt="HH" style="width:24px;height:24px;border-radius:50%;flex-shrink:0">
+            <h1 id="titleEl">TextGen</h1>
+            <div class="header-right">
+              <button class="icon-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M2 14h4m4-6h4m4 8h4"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Platforms -->
+        <div class="ad-section">
+          <h3>Площадки</h3>
+          <div class="platform-group">
+            <div class="platform-group-title" style="color:var(--vk)"><span class="dot" style="background:var(--vk)"></span> VK</div>
+            <div class="cb-grid">
+              <span class="cb-pill on" data-p="vk">Универсальная</span>
+              <span class="cb-pill" data-p="vk">Сайт</span>
+              <span class="cb-pill on" data-p="vk">Лид-формы</span>
+              <span class="cb-pill" data-p="vk">Карусель</span>
+            </div>
+          </div>
+          <div class="platform-group">
+            <div class="platform-group-title" style="color:var(--yandex)"><span class="dot" style="background:var(--yandex)"></span> Яндекс.Директ</div>
+            <div class="cb-grid">
+              <span class="cb-pill" data-p="yandex">Поиск</span>
+              <span class="cb-pill on" data-p="yandex">РСЯ</span>
+            </div>
+          </div>
+          <div class="platform-group">
+            <div class="platform-group-title" style="color:var(--tg)"><span class="dot" style="background:var(--tg)"></span> Telegram</div>
+            <div class="cb-grid">
+              <span class="cb-pill on" data-p="tg">Посевы</span>
+              <span class="cb-pill" data-p="tg">TGads</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Style -->
+        <div class="ad-section">
+          <h3>Стиль</h3>
+          <div class="style-selector">
+            <label>Креативный</label>
+            <label class="active">Сбалансированный</label>
+            <label>Формальный</label>
+            <div class="style-indicator"></div>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="ad-section">
+          <h3>Описание вакансии / контекст</h3>
+          <div class="hh-url-row">
+            <input class="hh-url-input" type="text" placeholder="https://hh.ru/vacancy/123456">
+            <button class="hh-url-btn">Загрузить</button>
+          </div>
+          <div class="ad-divider">или опишите вручную</div>
+          <textarea class="desc" placeholder="Опишите вакансию, ключевые преимущества..."></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="ad-actions">
+          <span class="selected-count">Выбрано: 4</span>
+          <button id="generateBtn">Сгенерировать</button>
+        </div>
+
+        <!-- Result cards -->
+        <div id="results" style="display:flex;flex-direction:column">
+          <div class="ad-card" data-platform="vk">
+            <div class="ad-card-header">
+              <span class="ad-card-platform">VK Универсальная</span>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Заголовок</div>
+              <div class="ad-field-text">Кладовщик в Алабино — от 110К</div>
+              <div class="ad-char-count ok">26 / 40</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill ok" style="width:65%"></div></div>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Текст</div>
+              <div class="ad-field-text">Стабильная работа на складе. Зарплата от 110 000 ₽. Опыт от 1 года. Оформление по ТК РФ.</div>
+              <div class="ad-char-count ok">85 / 220</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill ok" style="width:39%"></div></div>
+            </div>
+          </div>
+
+          <div class="ad-card" data-platform="tg">
+            <div class="ad-card-header">
+              <span class="ad-card-platform">Telegram Посевы</span>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Заголовок</div>
+              <div class="ad-field-text">📦 Кладовщик — до 130К!</div>
+              <div class="ad-char-count warn">25 / 56</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill warn" style="width:45%"></div></div>
+            </div>
+            <div class="ad-field">
+              <div class="ad-field-label">Текст</div>
+              <div class="ad-field-text">Компания «Эй Эм Кволити» ищет кладовщика в Алабино.
+
+💰 110 000 — 130 000 ₽ на руки
+📋 Оформление по ТК РФ</div>
+              <div class="ad-char-count ok">120 / 764</div>
+              <div class="ad-char-bar"><div class="ad-char-bar-fill ok" style="width:16%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ad-empty">
+          <div class="ad-empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg></div>
+          <p>Выберите площадки, стиль и опишите вакансию</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+const sliders = {};
+const ids = [
+  'maxWidth','formPad','sectionGap','sectionPad',
+  'titleSize','sectionTitle','platformTitle','logoSize',
+  'pillSize','pillPadV','pillPadH','styleSize','inputSize','inputPad','ctaSize','ctaPad',
+  'cardPad','cardGap','cardPlatform','fieldLabel','fieldText','charCount'
+];
+
+ids.forEach(id => {
+  sliders[id] = { input: $(`#${id}`), val: $(`#${id}Val`) };
+});
+
+function getVal(id) { return +sliders[id].input.value; }
+
+function update() {
+  const v = {};
+  ids.forEach(id => v[id] = getVal(id));
+
+  // Update value displays
+  ids.forEach(id => {
+    sliders[id].val.textContent = v[id] + (id === 'maxWidth' ? '' : 'px');
+  });
+
+  // Apply
+  const frame = $('#frame');
+  const form = $('#adForm');
+
+  frame.style.width = v.maxWidth + 'px';
+  form.style.padding = v.formPad + 'px';
+  form.style.gap = v.sectionGap + 'px';
+
+  $$('.ad-section').forEach(s => s.style.padding = `${v.sectionPad}px ${v.sectionPad+2}px`);
+  $('#titleEl').style.fontSize = v.titleSize + 'px';
+  $('#logo').style.width = v.logoSize + 'px';
+  $('#logo').style.height = v.logoSize + 'px';
+
+  $$('.ad-section h3').forEach(h => h.style.fontSize = v.sectionTitle + 'px');
+  $$('.platform-group-title').forEach(p => p.style.fontSize = v.platformTitle + 'px');
+
+  $$('.cb-pill').forEach(p => {
+    p.style.fontSize = v.pillSize + 'px';
+    p.style.padding = `${v.pillPadV}px ${v.pillPadH}px`;
+  });
+
+  $$('.style-selector label').forEach(l => l.style.fontSize = v.styleSize + 'px');
+
+  $$('.hh-url-input, textarea.desc').forEach(i => {
+    i.style.fontSize = v.inputSize + 'px';
+    i.style.padding = `${v.inputPad}px ${v.inputPad+2}px`;
+  });
+  $$('.hh-url-btn').forEach(b => {
+    b.style.fontSize = v.inputSize + 'px';
+    b.style.padding = `${v.inputPad}px ${v.inputPad+6}px`;
+  });
+  $$('.ad-divider').forEach(d => d.style.fontSize = v.inputSize + 'px');
+
+  $('.selected-count').style.fontSize = v.pillSize + 'px';
+  $('#generateBtn').style.fontSize = v.ctaSize + 'px';
+  $('#generateBtn').style.padding = `${v.ctaPad}px ${v.ctaPad+6}px`;
+
+  // Cards
+  $('#results').style.gap = v.cardGap + 'px';
+  $$('.ad-card').forEach(c => c.style.padding = v.cardPad + 'px');
+  $$('.ad-card-platform').forEach(p => p.style.fontSize = v.cardPlatform + 'px');
+  $$('.ad-field-label').forEach(l => l.style.fontSize = v.fieldLabel + 'px');
+  $$('.ad-field-text').forEach(t => t.style.fontSize = v.fieldText + 'px');
+  $$('.ad-char-count').forEach(c => c.style.fontSize = v.charCount + 'px');
+  $$('.ad-empty p').forEach(p => p.style.fontSize = v.inputSize + 'px');
+
+  updateCSS(v);
+}
+
+function updateCSS(v) {
+  const lines = [
+    `/* Layout: ${v.maxWidth}px */`,
+    `body { max-width:${v.maxWidth}px; }`,
+    `.ad-form { padding:${v.formPad}px; gap:${v.sectionGap}px; }`,
+    `.ad-section { padding:${v.sectionPad}px ${v.sectionPad+2}px; }`,
+    `.ad-header-row h1 { font-size:${v.titleSize}px; }`,
+    `/* logo */ width:${v.logoSize}px; height:${v.logoSize}px;`,
+    `.ad-section h3 { font-size:${v.sectionTitle}px; }`,
+    `.platform-group-title { font-size:${v.platformTitle}px; }`,
+    `.cb-pill { font-size:${v.pillSize}px; padding:${v.pillPadV}px ${v.pillPadH}px; }`,
+    `.style-selector label { font-size:${v.styleSize}px; }`,
+    `inputs/textarea { font-size:${v.inputSize}px; padding:${v.inputPad}px; }`,
+    `#generateBtn { font-size:${v.ctaSize}px; padding:${v.ctaPad}px; }`,
+    `.ad-card { padding:${v.cardPad}px; } gap:${v.cardGap}px;`,
+    `.ad-card-platform { font-size:${v.cardPlatform}px; }`,
+    `.ad-field-label { font-size:${v.fieldLabel}px; }`,
+    `.ad-field-text { font-size:${v.fieldText}px; }`,
+    `.ad-char-count { font-size:${v.charCount}px; }`,
+  ];
+  $('#cssOutput').textContent = lines.join('\n');
+}
+
+// Presets
+const presets = {
+  compact: {maxWidth:420,formPad:12,sectionGap:10,sectionPad:10,titleSize:16,sectionTitle:10,platformTitle:10,logoSize:20,pillSize:11,pillPadV:5,pillPadH:12,styleSize:11,inputSize:12,inputPad:7,ctaSize:12,ctaPad:8,cardPad:10,cardGap:8,cardPlatform:10,fieldLabel:9,fieldText:12,charCount:9},
+  default: {maxWidth:600,formPad:16,sectionGap:18,sectionPad:12,titleSize:20,sectionTitle:12,platformTitle:12,logoSize:24,pillSize:14,pillPadV:6,pillPadH:14,styleSize:14,inputSize:15,inputPad:8,ctaSize:15,ctaPad:10,cardPad:14,cardGap:10,cardPlatform:11,fieldLabel:11,fieldText:15,charCount:11},
+  large: {maxWidth:750,formPad:20,sectionGap:22,sectionPad:16,titleSize:24,sectionTitle:14,platformTitle:13,logoSize:28,pillSize:15,pillPadV:7,pillPadH:16,styleSize:15,inputSize:16,inputPad:10,ctaSize:16,ctaPad:12,cardPad:16,cardGap:12,cardPlatform:12,fieldLabel:11,fieldText:16,charCount:11},
+  xl: {maxWidth:900,formPad:24,sectionGap:28,sectionPad:18,titleSize:28,sectionTitle:15,platformTitle:14,logoSize:32,pillSize:16,pillPadV:8,pillPadH:18,styleSize:16,inputSize:17,inputPad:12,ctaSize:18,ctaPad:14,cardPad:18,cardGap:14,cardPlatform:13,fieldLabel:12,fieldText:17,charCount:12},
+};
+
+function applyPreset(name) {
+  $$('.preset').forEach(p => p.classList.remove('active'));
+  const btn = [...$$('.preset')].find(p => p.textContent.toLowerCase() === name.toLowerCase());
+  if (btn) btn.classList.add('active');
+
+  const p = presets[name];
+  ids.forEach(id => {
+    if (p[id] !== undefined) {
+      sliders[id].input.value = p[id];
+    }
+  });
+  update();
+}
+
+// Wire sliders
+ids.forEach(id => {
+  sliders[id].input.addEventListener('input', update);
+});
+
+// Copy
+$('#btnCopy').addEventListener('click', () => {
+  navigator.clipboard.writeText($('#cssOutput').textContent);
+  $('#btnCopy').textContent = 'Скопировано!';
+  setTimeout(() => $('#btnCopy').textContent = 'Скопировать CSS', 1500);
+});
+
+// Init
+applyPreset('default');
+</script>
+</body>
+</html>
