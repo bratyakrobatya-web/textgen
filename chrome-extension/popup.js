@@ -119,8 +119,13 @@ document.getElementById('model').addEventListener('change', (e) => {
     chrome.storage.local.set({ hh_model: e.target.value });
 });
 const descClear = document.getElementById('descClear');
+function autoResizeDesc() {
+    adDescription.style.height = 'auto';
+    adDescription.style.height = Math.max(80, adDescription.scrollHeight) + 'px';
+}
 function updateDescClear() {
     if (descClear) descClear.style.display = adDescription.value.trim() ? '' : 'none';
+    autoResizeDesc();
 }
 adDescription.addEventListener('input', () => {
     chrome.storage.local.set({ ad_description: adDescription.value });

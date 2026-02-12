@@ -175,8 +175,9 @@ body{
   width:100%;padding:9px;
   background:var(--bg);border:1px solid var(--border);
   border-radius:var(--r-sm);color:var(--text);font-size:13px;
-  font-family:inherit;resize:vertical;min-height:80px;line-height:1.4;
-  transition:border-color var(--dur) ease,box-shadow var(--dur) ease;
+  font-family:inherit;resize:none;min-height:80px;line-height:1.4;
+  overflow:hidden;
+  transition:border-color var(--dur) ease,box-shadow var(--dur) ease,height 0.15s ease;
 }
 #adDescription:hover{border-color:var(--border-hover)}
 #adDescription:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
