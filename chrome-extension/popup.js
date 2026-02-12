@@ -1030,13 +1030,6 @@ async function parseCurrentPage() {
         return;
     }
 
-    const token = tokenInput.value.trim();
-    if (!token) {
-        settingsPanel.classList.add('open');
-        tokenInput.focus();
-        return;
-    }
-
     btn.disabled = true;
     btn.classList.add('loading');
     const origHTML = btn.innerHTML;
@@ -1262,7 +1255,7 @@ async function parseCurrentPage() {
         const data = results[0]?.result;
         if (!data) throw new Error('Пустой результат парсинга');
 
-        // Clean raw text
+        // Clean raw text — put directly into description (NO AI processing)
         const rawText = [data.title, data.metaDescription, data.bodyText]
             .filter(Boolean)
             .join('\n')
@@ -1270,57 +1263,7 @@ async function parseCurrentPage() {
             .replace(/\n{3,}/g, '\n\n')
             .substring(0, 12000);
 
-        // Build system prompt with optional focus instruction (system-level = highest priority for the model)
-        const focusInstruction = parseFocusText?.value.trim() || '';
-        let systemPrompt = PARSE_SYSTEM_PROMPT;
-        if (focusInstruction) {
-            systemPrompt += '\n\nФОКУС ПОЛЬЗОВАТЕЛЯ (наивысший приоритет):\n'
-                + 'Пользователь просит сфокусироваться на: ' + focusInstruction + '\n'
-                + 'Правила фокуса:\n'
-                + '- Ищи ПО СМЫСЛУ и ПО ВХОЖДЕНИЮ, а не по точному совпадению. «Водитель-курьер» = «Курьер» = «ВОДИТЕЛЬ-КУРЬЕР» = «водитель курьер»\n'
-                + '- Учитывай ВСЕ варианты написания: с большой буквы, капслоком, через дефис, без дефиса, сокращения\n'
-                + '- Извлеки ВСЮ информацию, связанную с этим запросом. Если есть маркеры вкладок — найди нужную вкладку\n'
-                + '- НЕ ОТКАЗЫВАЙ, даже если точного совпадения нет. Найди максимально похожий контент и извлеки его';
-        }
-        const userContent = 'URL: ' + data.url + '\n\n' + rawText;
-
-        // Step 2: AI processing via Haiku — extract HR-relevant info
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> AI обработка...';
-
-        const resp = await fetch(GATEWAY, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': token,
-                'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
-                max_tokens: 2048,
-                system: systemPrompt,
-                messages: [{ role: 'user', content: userContent }],
-            }),
-        });
-
-        if (!resp.ok) {
-            const t = await resp.text();
-            throw new Error('AI: HTTP ' + resp.status + ' — ' + t.substring(0, 150));
-        }
-
-        const aiData = await resp.json();
-        let cleaned = aiData.content?.[0]?.text || '';
-
-        if (!cleaned.trim()) throw new Error('AI вернул пустой результат');
-
-        // Strip any markdown formatting that slipped through
-        cleaned = cleaned
-            .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold** → bold
-            .replace(/\*(.+?)\*/g, '$1')        // *italic* → italic
-            .replace(/^#{1,4}\s+/gm, '')        // # headings → plain text
-            .replace(/^[-*]\s+/gm, '')           // - list items → plain text
-            .trim();
-
-        adDescription.value = cleaned;
+        adDescription.value = rawText;
         chrome.storage.local.set({ ad_description: adDescription.value });
         updateDescClear();
 
@@ -1336,6 +1279,101 @@ async function parseCurrentPage() {
         errDiv.textContent = err.message;
         errDiv.style.cssText = 'margin-top:8px;font-size:12px';
         btn.after(errDiv);
+        setTimeout(() => errDiv.remove(), 4000);
+    } finally {
+        btn.disabled = false;
+        btn.classList.remove('loading');
+    }
+}
+
+// ========================
+// Normalize description via AI (Step 2 — separate from parsing)
+// ========================
+
+const normalizeBtn = document.getElementById('parseNormalizeBtn');
+normalizeBtn?.addEventListener('click', normalizeDescription);
+
+async function normalizeDescription() {
+    const btn = normalizeBtn;
+    if (!btn) return;
+
+    const token = tokenInput.value.trim();
+    if (!token) {
+        settingsPanel.classList.add('open');
+        tokenInput.focus();
+        return;
+    }
+
+    const rawText = adDescription.value.trim();
+    if (!rawText) {
+        adDescription.focus();
+        return;
+    }
+
+    btn.disabled = true;
+    btn.classList.add('loading');
+
+    try {
+        // Build system prompt with optional focus instruction
+        const focusInstruction = parseFocusText?.value.trim() || '';
+        let systemPrompt = PARSE_SYSTEM_PROMPT;
+        if (focusInstruction) {
+            systemPrompt += '\n\nФОКУС ПОЛЬЗОВАТЕЛЯ (наивысший приоритет):\n'
+                + 'Пользователь просит сфокусироваться на: ' + focusInstruction + '\n'
+                + 'Правила фокуса:\n'
+                + '- Ищи ПО СМЫСЛУ и ПО ВХОЖДЕНИЮ, а не по точному совпадению. «Водитель-курьер» = «Курьер» = «ВОДИТЕЛЬ-КУРЬЕР» = «водитель курьер»\n'
+                + '- Учитывай ВСЕ варианты написания: с большой буквы, капслоком, через дефис, без дефиса, сокращения\n'
+                + '- Извлеки ВСЮ информацию, связанную с этим запросом. Если есть маркеры вкладок — найди нужную вкладку\n'
+                + '- НЕ ОТКАЗЫВАЙ, даже если точного совпадения нет. Найди максимально похожий контент и извлеки его';
+        }
+
+        const resp = await fetch(GATEWAY, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': token,
+                'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages: [{ role: 'user', content: rawText }],
+            }),
+        });
+
+        if (!resp.ok) {
+            const t = await resp.text();
+            throw new Error('AI: HTTP ' + resp.status + ' — ' + t.substring(0, 150));
+        }
+
+        const aiData = await resp.json();
+        let cleaned = aiData.content?.[0]?.text || '';
+
+        if (!cleaned.trim()) throw new Error('AI вернул пустой результат');
+
+        // Strip any markdown formatting that slipped through
+        cleaned = cleaned
+            .replace(/\*\*(.+?)\*\*/g, '$1')
+            .replace(/\*(.+?)\*/g, '$1')
+            .replace(/^#{1,4}\s+/gm, '')
+            .replace(/^[-*]\s+/gm, '')
+            .trim();
+
+        adDescription.value = cleaned;
+        chrome.storage.local.set({ ad_description: adDescription.value });
+        updateDescClear();
+
+        // Success feedback
+        btn.classList.add('success');
+        setTimeout(() => btn.classList.remove('success'), 2000);
+
+    } catch (err) {
+        const errDiv = document.createElement('div');
+        errDiv.className = 'ad-error';
+        errDiv.textContent = err.message;
+        errDiv.style.cssText = 'margin-top:8px;font-size:12px';
+        btn.closest('.parse-row')?.after(errDiv);
         setTimeout(() => errDiv.remove(), 4000);
     } finally {
         btn.disabled = false;

@@ -392,6 +392,20 @@ body{
 .parse-focus-panel textarea:focus{border-color:var(--tg);box-shadow:0 0 0 3px var(--tg-dim)}
 .parse-focus-panel textarea::placeholder{color:var(--text3);font-size:11px}
 
+.parse-normalize-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:36px;flex-shrink:0;
+  background:rgba(255,255,255,0.04);border:1px solid var(--border);
+  border-radius:var(--r-sm);color:var(--text3);cursor:pointer;
+  transition:all 0.2s ease;position:relative;
+}
+.parse-normalize-btn:hover{background:rgba(74,222,128,0.08);color:var(--green);border-color:var(--green-border)}
+.parse-normalize-btn:active{transform:scale(0.93);transition-duration:60ms}
+.parse-normalize-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.parse-normalize-btn.loading{color:transparent;pointer-events:none}
+.parse-normalize-btn.loading::after{content:'';position:absolute;top:50%;left:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid rgba(74,222,128,0.3);border-top-color:var(--green);border-radius:50%;animation:spin 0.6s linear infinite}
+.parse-normalize-btn.success{color:var(--green);border-color:var(--green-border);background:var(--green-dim)}
+
 .ad-divider{display:flex;align-items:center;gap:10px;margin:4px 0 8px;font-size:9px;color:var(--text3)}
 .ad-divider::before,.ad-divider::after{content:'';flex:1;height:1px;background:var(--border)}
 
@@ -586,6 +600,7 @@ body::before{
     <div class="parse-row">
       <button class="parse-page-btn" id="parsePageBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Спарсить текущую страницу</button>
       <button class="parse-focus-toggle" id="parseFocusToggle" title="Инструкция для парсера"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5z"/><path d="M15 5l4 4"/></svg></button>
+      <button class="parse-normalize-btn" id="parseNormalizeBtn" title="Нормализация через AI"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg></button>
     </div>
     <div class="parse-focus-panel" id="parseFocusPanel">
       <div class="parse-focus-inner"><textarea id="parseFocusText" rows="2" placeholder="Напр. &quot;только вакансия кассира&quot; или &quot;игнорируй похожие вакансии&quot;"></textarea></div>
