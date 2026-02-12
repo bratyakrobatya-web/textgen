@@ -134,6 +134,20 @@ descClear?.addEventListener('click', () => {
 });
 
 // ========================
+// Receive selected text from content script floating button
+// ========================
+chrome.runtime.onMessage?.addListener((msg) => {
+    if (msg?.type === 'ADD_SELECTION' && msg.text) {
+        const current = adDescription.value.trim();
+        adDescription.value = current ? current + '\n\n' + msg.text : msg.text;
+        chrome.storage.local.set({ ad_description: adDescription.value });
+        updateDescClear();
+        // Scroll textarea to bottom to show newly added text
+        adDescription.scrollTop = adDescription.scrollHeight;
+    }
+});
+
+// ========================
 // Settings
 // ========================
 
