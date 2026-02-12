@@ -96,7 +96,7 @@ chrome.storage.local.get(['hh_token', 'hh_model', 'ad_platforms', 'ad_style', 'a
             cb.closest('.cb-pill').classList.toggle('checked', cb.checked);
         });
     }
-    if (d.ad_description) { adDescription.value = d.ad_description; updateDescClear(); }
+    if (d.ad_description) { adDescription.value = d.ad_description; updateDescClear(); requestAnimationFrame(autoResizeDesc); }
     if (d.ad_history && d.ad_history.length) {
         adHistory = d.ad_history;
         historyIndex = 0;
@@ -120,8 +120,10 @@ document.getElementById('model').addEventListener('change', (e) => {
 });
 const descClear = document.getElementById('descClear');
 function autoResizeDesc() {
-    adDescription.style.height = 'auto';
+    adDescription.style.overflow = 'hidden';
+    adDescription.style.height = '0';
     adDescription.style.height = Math.max(80, adDescription.scrollHeight) + 'px';
+    adDescription.style.overflow = '';
 }
 function updateDescClear() {
     if (descClear) descClear.style.display = adDescription.value.trim() ? '' : 'none';
