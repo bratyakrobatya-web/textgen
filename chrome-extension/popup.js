@@ -1006,13 +1006,16 @@ const PARSE_SYSTEM_PROMPT = `Ты — HR-ассистент. Из сырого �
 - Контакты / способ отклика (если есть)
 
 ПРАВИЛА:
-1. Убери всё лишнее: навигацию, рекламу, футеры, куки-баннеры, юридические тексты, похожие вакансии, отзывы
-2. Если страница НЕ о вакансии — извлеки ключевую суть для рекламного текста (продукт, услуга, УТП)
-3. ФОРМАТ ОТВЕТА — только plain text. ЗАПРЕЩЕНО: **жирный**, *курсив*, # заголовки, - списки с дефисом в начале строки, любая markdown- или HTML-разметка. Используй простые переносы строк для разделения секций. Названия секций пиши без двоеточий и спецсимволов, просто текстом
-4. Названия должностей, компаний, брендов и термины копируй БУКВА В БУКВУ с оригинала. Не перефразируй, не исправляй регистр, не изменяй ни одного символа в именах собственных
-5. Если на странице НЕСКОЛЬКО вакансий/позиций — извлекай данные по ВСЕМ, чётко разделяя. Если пользователь указал конкретную — извлекай ТОЛЬКО её, полностью игнорируя остальные
-6. НЕ пропускай секции — если на странице есть информация о преимуществах, условиях, обязанностях или требованиях, она ДОЛЖНА быть в ответе
-7. Будь лаконичен, но не теряй факты. Ориентир — 1500–2500 символов`;
+1. АБСОЛЮТНЫЙ ЗАПРЕТ НА ОТКАЗ. НИКОГДА не отвечай «не могу извлечь», «это не вакансия», «рекомендую перейти». Ты ВСЕГДА возвращаешь извлечённый контент. Никаких советов, рекомендаций, пояснений — только данные
+2. Лендинги, статьи, карьерные страницы, агрегаторы, страницы с несколькими позициями — это ВАЛИДНЫЕ источники. Извлекай из них всё релевантное
+3. Если страница НЕ о вакансии — извлеки ключевую суть для рекламного текста (продукт, услуга, УТП). Не отказывай
+4. Убери всё лишнее: навигацию, рекламу, футеры, куки-баннеры, юридические тексты, похожие вакансии, отзывы
+5. ФОРМАТ ОТВЕТА — только plain text. ЗАПРЕЩЕНО: **жирный**, *курсив*, # заголовки, - списки с дефисом в начале строки, любая markdown- или HTML-разметка. Используй простые переносы строк для разделения секций. Названия секций пиши без двоеточий и спецсимволов, просто текстом
+6. Названия должностей, компаний, брендов и термины копируй БУКВА В БУКВУ с оригинала. Не перефразируй, не исправляй регистр, не изменяй ни одного символа в именах собственных
+7. Если на странице НЕСКОЛЬКО вакансий/позиций — извлекай данные по ВСЕМ, чётко разделяя
+8. Если есть маркеры [АКТИВНАЯ ВКЛАДКА: ...] — приоритетно извлекай контент этой вкладки. Контент скрытых вкладок извлекай после активной, с чётким разделением
+9. НЕ пропускай секции — если на странице есть информация о преимуществах, условиях, обязанностях или требованиях, она ДОЛЖНА быть в ответе
+10. Будь лаконичен, но не теряй факты. Ориентир — 1500–2500 символов`;
 
 async function parseCurrentPage() {
     const btn = document.getElementById('parsePageBtn');
@@ -1061,12 +1064,35 @@ async function parseCurrentPage() {
                 );
                 const root = mainEl || document.body;
 
+                // --- Detect active tab and tab labels ---
+                let activeTabLabel = '';
+                const tabLabels = [];
+                const tabLinkSel = '[role="tab"], .tab-link, .tab-item, [class*="tab"][class*="item"], [class*="tab"][class*="link"], [class*="menu__item"]';
+                try {
+                    root.querySelectorAll(tabLinkSel).forEach(el => {
+                        const label = el.textContent.trim();
+                        if (!label || label.length > 60) return;
+                        tabLabels.push(label);
+                        const isActive = el.classList.toString().match(/active|selected|current/i)
+                            || el.getAttribute('aria-selected') === 'true';
+                        if (isActive) activeTabLabel = label;
+                    });
+                    // Fallback: check nav links with hash matching current URL hash
+                    if (!activeTabLabel && location.hash) {
+                        const hash = location.hash.substring(1);
+                        root.querySelectorAll('a[href="#' + hash + '"]').forEach(el => {
+                            activeTabLabel = el.textContent.trim();
+                        });
+                    }
+                } catch (_) {}
+
                 // --- Expand hidden content (tabs, accordions, details) ---
                 // 1. Open all <details>
                 root.querySelectorAll('details:not([open])').forEach(d => { d.open = true; d.dataset._wasHidden = '1'; });
 
                 // 2. Find and temporarily reveal hidden tab/accordion panels
                 const hiddenEls = [];
+                const tabPanels = []; // track tab panels for labeling
                 const panelSel = [
                     '[role="tabpanel"]', '.tab-pane', '.tab-content > div',
                     '[class*="tab-"]', '[class*="tab_"]', '[class*="_tab"]',
@@ -1075,38 +1101,79 @@ async function parseCurrentPage() {
                 ].join(',');
                 try {
                     root.querySelectorAll(panelSel).forEach(el => {
-                        // Skip tiny elements (likely not content panels)
                         if (el.scrollHeight < 10 && el.children.length === 0) return;
                         const cs = getComputedStyle(el);
-                        const isHidden = cs.display === 'none'
-                            || cs.visibility === 'hidden'
-                            || cs.opacity === '0'
-                            || cs.maxHeight === '0px'
-                            || el.hasAttribute('hidden')
-                            || el.getAttribute('aria-hidden') === 'true';
+                        const isVisible = cs.display !== 'none'
+                            && cs.visibility !== 'hidden'
+                            && cs.opacity !== '0'
+                            && cs.maxHeight !== '0px'
+                            && !el.hasAttribute('hidden')
+                            && el.getAttribute('aria-hidden') !== 'true';
+                        const isHidden = !isVisible;
+                        // Track panel with its visibility state and ID
+                        const panelId = el.id || el.getAttribute('aria-labelledby') || '';
+                        tabPanels.push({ el, panelId, wasVisible: isVisible });
                         if (isHidden) {
                             hiddenEls.push({ el, orig: el.style.cssText });
                             el.style.cssText += ';display:block!important;visibility:visible!important;opacity:1!important;max-height:none!important;overflow:visible!important;height:auto!important;';
                         }
                     });
-                } catch (_) { /* selector may fail on some pages — continue */ }
+                } catch (_) {}
 
-                // --- Extract structured sections (heading + content pairs) ---
-                const sections = [];
-                root.querySelectorAll('h1, h2, h3, h4').forEach(h => {
-                    const heading = h.textContent.trim();
-                    if (!heading) return;
-                    let content = '';
-                    let sibling = h.nextElementSibling;
-                    while (sibling && !sibling.matches('h1, h2, h3, h4')) {
-                        content += (sibling.innerText || sibling.textContent || '') + '\n';
-                        sibling = sibling.nextElementSibling;
+                // --- Extract structured sections per tab panel ---
+                function extractSections(container) {
+                    const secs = [];
+                    container.querySelectorAll('h1, h2, h3, h4').forEach(h => {
+                        const heading = h.textContent.trim();
+                        if (!heading) return;
+                        let content = '';
+                        let sibling = h.nextElementSibling;
+                        while (sibling && !sibling.matches('h1, h2, h3, h4')) {
+                            content += (sibling.innerText || sibling.textContent || '') + '\n';
+                            sibling = sibling.nextElementSibling;
+                        }
+                        content = content.trim();
+                        if (content) secs.push(heading + ':\n' + content);
+                    });
+                    return secs.join('\n\n');
+                }
+
+                let bodyText = '';
+
+                // If we found tab panels, extract them separately with markers
+                if (tabPanels.length >= 2) {
+                    const parts = [];
+                    // Add tab structure context
+                    if (activeTabLabel) {
+                        parts.push('[АКТИВНАЯ ВКЛАДКА: ' + activeTabLabel + ']');
                     }
-                    content = content.trim();
-                    if (content) sections.push(heading + ':\n' + content);
-                });
-                const structuredText = sections.join('\n\n');
-                const bodyText = (structuredText.length > 200 ? structuredText : root.innerText) || '';
+                    if (tabLabels.length > 1) {
+                        parts.push('[ВСЕ ВКЛАДКИ: ' + tabLabels.join(', ') + ']');
+                    }
+                    // Extract each panel
+                    tabPanels.forEach(({ el, panelId, wasVisible }) => {
+                        // Try to find a label for this panel
+                        let label = panelId;
+                        if (!label) {
+                            // Try to find a matching tab link
+                            const idx = tabPanels.indexOf(tabPanels.find(p => p.el === el));
+                            if (tabLabels[idx]) label = tabLabels[idx];
+                        }
+                        const marker = wasVisible ? 'АКТИВНАЯ' : 'СКРЫТАЯ';
+                        const structured = extractSections(el);
+                        const text = structured.length > 100 ? structured : (el.innerText || '').trim();
+                        if (text.length > 30) {
+                            parts.push('--- [' + marker + ' ВКЛАДКА' + (label ? ': ' + label : '') + '] ---\n' + text);
+                        }
+                    });
+                    bodyText = parts.join('\n\n');
+                }
+
+                // Fallback: if no tab panels or too little content, use full page extraction
+                if (bodyText.length < 200) {
+                    const structured = extractSections(root);
+                    bodyText = (structured.length > 200 ? structured : root.innerText) || '';
+                }
 
                 // --- Restore hidden elements ---
                 hiddenEls.forEach(({ el, orig }) => { el.style.cssText = orig; });
@@ -1116,7 +1183,7 @@ async function parseCurrentPage() {
                     url: location.href,
                     title: title.substring(0, 200),
                     metaDescription: metaDesc.substring(0, 300),
-                    bodyText: bodyText.substring(0, 12000),
+                    bodyText: bodyText.substring(0, 14000),
                 };
             },
         });
@@ -1130,13 +1197,19 @@ async function parseCurrentPage() {
             .join('\n')
             .split('\n').map(l => l.trim()).filter(Boolean).join('\n')
             .replace(/\n{3,}/g, '\n\n')
-            .substring(0, 10000);
+            .substring(0, 12000);
 
         // Build system prompt with optional focus instruction (system-level = highest priority for the model)
         const focusInstruction = parseFocusText?.value.trim() || '';
         let systemPrompt = PARSE_SYSTEM_PROMPT;
         if (focusInstruction) {
-            systemPrompt += '\n\nВАЖНО — ИНСТРУКЦИЯ ПОЛЬЗОВАТЕЛЯ (наивысший приоритет):\n' + focusInstruction;
+            systemPrompt += '\n\nФОКУС ПОЛЬЗОВАТЕЛЯ (наивысший приоритет):\n'
+                + 'Пользователь просит сфокусироваться на: ' + focusInstruction + '\n'
+                + 'Правила фокуса:\n'
+                + '- Ищи ПО СМЫСЛУ и ПО ВХОЖДЕНИЮ, а не по точному совпадению. «Водитель-курьер» = «Курьер» = «ВОДИТЕЛЬ-КУРЬЕР» = «водитель курьер»\n'
+                + '- Учитывай ВСЕ варианты написания: с большой буквы, капслоком, через дефис, без дефиса, сокращения\n'
+                + '- Извлеки ВСЮ информацию, связанную с этим запросом. Если есть маркеры вкладок — найди нужную вкладку\n'
+                + '- НЕ ОТКАЗЫВАЙ, даже если точного совпадения нет. Найди максимально похожий контент и извлеки его';
         }
         const userContent = 'URL: ' + data.url + '\n\n' + rawText;
 
