@@ -1057,6 +1057,27 @@ async function parseCurrentPage() {
             func: () => {
                 const title = document.title || '';
                 const metaDesc = document.querySelector('meta[name="description"]')?.content || '';
+
+                // --- Helper: check if element is visually hidden ---
+                function isElHidden(el) {
+                    const cs = getComputedStyle(el);
+                    if (cs.display === 'none') return true;
+                    if (cs.visibility === 'hidden') return true;
+                    if (cs.opacity === '0') return true;
+                    if (cs.maxHeight === '0px') return true;
+                    if (cs.height === '0px' && cs.overflow !== 'visible') return true;
+                    if (cs.clipPath === 'inset(100%)' || cs.clip === 'rect(0px, 0px, 0px, 0px)') return true;
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width === 0 && rect.height === 0) return true;
+                    if (rect.right < -100 || rect.bottom < -100 || rect.left > window.innerWidth + 100) return true;
+                    if (el.hasAttribute('hidden')) return true;
+                    if (el.getAttribute('aria-hidden') === 'true') return true;
+                    return false;
+                }
+
+                // --- Helper: force-show a hidden element ---
+                const FORCE_SHOW = ';display:block!important;visibility:visible!important;opacity:1!important;max-height:none!important;overflow:visible!important;height:auto!important;position:static!important;clip:auto!important;clip-path:none!important;transform:none!important;';
+
                 // Expanded selectors for career sites
                 const mainEl = document.querySelector(
                     'article, main, [role="main"], ' +
@@ -1095,7 +1116,7 @@ async function parseCurrentPage() {
 
                 // 2. Find and temporarily reveal hidden tab/accordion panels
                 const hiddenEls = [];
-                const tabPanels = []; // track tab panels for labeling
+                const tabPanels = [];
                 const panelSel = [
                     '[role="tabpanel"]', '.tab-pane', '.tab-content > div',
                     '[class*="tab-"]', '[class*="tab_"]', '[class*="_tab"]',
@@ -1104,34 +1125,57 @@ async function parseCurrentPage() {
                 ].join(',');
                 try {
                     root.querySelectorAll(panelSel).forEach(el => {
-                        if (el.scrollHeight < 10 && el.children.length === 0) return;
-                        const cs = getComputedStyle(el);
-                        const isVisible = cs.display !== 'none'
-                            && cs.visibility !== 'hidden'
-                            && cs.opacity !== '0'
-                            && cs.maxHeight !== '0px'
-                            && !el.hasAttribute('hidden')
-                            && el.getAttribute('aria-hidden') !== 'true';
-                        const isHidden = !isVisible;
-                        // Track panel with its visibility state and ID
+                        // Filter out noise: skip tiny/empty elements and nav-like elements
+                        if (el.children.length === 0 && (el.textContent || '').trim().length < 20) return;
+                        const tag = el.tagName.toLowerCase();
+                        if (tag === 'a' || tag === 'button' || tag === 'nav' || tag === 'li') return;
+                        // Skip if element is a tab LINK rather than a content PANEL
+                        if (el.getAttribute('role') === 'tab') return;
+
+                        const hidden = isElHidden(el);
                         const panelId = el.id || el.getAttribute('aria-labelledby') || '';
-                        tabPanels.push({ el, panelId, wasVisible: isVisible });
-                        if (isHidden) {
+                        tabPanels.push({ el, panelId, wasVisible: !hidden });
+                        if (hidden) {
                             hiddenEls.push({ el, orig: el.style.cssText });
-                            el.style.cssText += ';display:block!important;visibility:visible!important;opacity:1!important;max-height:none!important;overflow:visible!important;height:auto!important;';
+                            el.style.cssText += FORCE_SHOW;
                         }
                     });
                 } catch (_) {}
 
-                // --- Extract structured sections per tab panel ---
+                // --- Extract structured sections (headings + visual-heading elements) ---
                 function extractSections(container) {
+                    // Collect all heading-like elements
+                    const headingEls = [];
+                    // Standard headings
+                    container.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => headingEls.push(h));
+                    // Visual headings: standalone <strong>/<b> that are sole children of a block
+                    container.querySelectorAll('p > strong:only-child, p > b:only-child, div > strong:only-child, div > b:only-child').forEach(el => {
+                        const parent = el.parentElement;
+                        const text = el.textContent.trim();
+                        // Must look like a section title: short, no period at end
+                        if (text.length >= 3 && text.length <= 80 && !text.endsWith('.') && !text.endsWith(',')) {
+                            // Avoid duplicates with real headings
+                            if (!headingEls.includes(parent)) headingEls.push(parent);
+                        }
+                    });
+                    // CSS-styled headings: elements with specific classes
+                    container.querySelectorAll('[class*="section-title"], [class*="section-heading"], [class*="block-title"], [class*="heading"]').forEach(el => {
+                        const text = el.textContent.trim();
+                        if (text.length >= 3 && text.length <= 80 && !headingEls.includes(el)) headingEls.push(el);
+                    });
+
+                    // Sort by DOM order
+                    headingEls.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+
+                    // Build sections: heading + content until next heading
                     const secs = [];
-                    container.querySelectorAll('h1, h2, h3, h4').forEach(h => {
+                    const headingSet = new Set(headingEls);
+                    headingEls.forEach(h => {
                         const heading = h.textContent.trim();
                         if (!heading) return;
                         let content = '';
                         let sibling = h.nextElementSibling;
-                        while (sibling && !sibling.matches('h1, h2, h3, h4')) {
+                        while (sibling && !headingSet.has(sibling)) {
                             content += (sibling.innerText || sibling.textContent || '') + '\n';
                             sibling = sibling.nextElementSibling;
                         }
@@ -1141,24 +1185,45 @@ async function parseCurrentPage() {
                     return secs.join('\n\n');
                 }
 
+                // --- Extract text from same-origin iframes ---
+                let iframeText = '';
+                try {
+                    root.querySelectorAll('iframe').forEach(f => {
+                        try {
+                            const doc = f.contentDocument || f.contentWindow?.document;
+                            if (doc) {
+                                const t = (doc.body?.innerText || '').trim();
+                                if (t.length > 50) iframeText += '\n\n[IFRAME]\n' + t;
+                            }
+                        } catch (_) { /* cross-origin — skip */ }
+                    });
+                } catch (_) {}
+
+                // --- Extract text from open Shadow DOM ---
+                let shadowText = '';
+                try {
+                    root.querySelectorAll('*').forEach(el => {
+                        if (el.shadowRoot) {
+                            const t = (el.shadowRoot.textContent || '').trim();
+                            if (t.length > 50) shadowText += '\n\n[SHADOW DOM]\n' + t;
+                        }
+                    });
+                } catch (_) {}
+
                 let bodyText = '';
 
                 // If we found tab panels, extract them separately with markers
                 if (tabPanels.length >= 2) {
                     const parts = [];
-                    // Add tab structure context
                     if (activeTabLabel) {
                         parts.push('[АКТИВНАЯ ВКЛАДКА: ' + activeTabLabel + ']');
                     }
                     if (tabLabels.length > 1) {
                         parts.push('[ВСЕ ВКЛАДКИ: ' + tabLabels.join(', ') + ']');
                     }
-                    // Extract each panel
                     tabPanels.forEach(({ el, panelId, wasVisible }) => {
-                        // Try to find a label for this panel
                         let label = panelId;
                         if (!label) {
-                            // Try to find a matching tab link
                             const idx = tabPanels.indexOf(tabPanels.find(p => p.el === el));
                             if (tabLabels[idx]) label = tabLabels[idx];
                         }
@@ -1172,11 +1237,14 @@ async function parseCurrentPage() {
                     bodyText = parts.join('\n\n');
                 }
 
-                // Fallback: if no tab panels or too little content, use full page extraction
+                // Fallback: if no tab panels or too little content
                 if (bodyText.length < 200) {
                     const structured = extractSections(root);
                     bodyText = (structured.length > 200 ? structured : root.innerText) || '';
                 }
+
+                // Append iframe and shadow DOM content
+                bodyText += iframeText + shadowText;
 
                 // --- Restore hidden elements ---
                 hiddenEls.forEach(({ el, orig }) => { el.style.cssText = orig; });
