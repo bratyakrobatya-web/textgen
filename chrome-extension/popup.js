@@ -1072,13 +1072,15 @@ async function parseCurrentPage() {
                 const FORCE_SHOW = ';display:block!important;visibility:visible!important;opacity:1!important;max-height:none!important;overflow:visible!important;height:auto!important;position:static!important;clip:auto!important;clip-path:none!important;transform:none!important;';
 
                 // Expanded selectors for career sites
-                const mainEl = document.querySelector(
+                let mainEl = document.querySelector(
                     'article, main, [role="main"], ' +
                     '.vacancy-description, .vacancy-section, .vacancy-body, .vacancy-content, ' +
                     '.job-description, .job-details, .job-content, ' +
                     '.content, .article, ' +
                     '[class*="vacancy"], [class*="job-detail"], [class*="position-detail"]'
                 );
+                // Validate: if mainEl is too small, it's probably a wrong element — fall back to body
+                if (mainEl && (mainEl.innerText || '').length < 500) mainEl = null;
                 const root = mainEl || document.body;
 
                 // --- Detect active tab and tab labels ---
@@ -1131,6 +1133,17 @@ async function parseCurrentPage() {
                         if (hidden) {
                             hiddenEls.push({ el, orig: el.style.cssText });
                             el.style.cssText += FORCE_SHOW;
+                            // Cascade: also force-show hidden CHILDREN inside this panel
+                            // (handles cases where child visibility depends on parent's --active class)
+                            try {
+                                el.querySelectorAll('*').forEach(child => {
+                                    if (child.children.length === 0 && (child.textContent || '').trim().length < 5) return;
+                                    if (isElHidden(child)) {
+                                        hiddenEls.push({ el: child, orig: child.style.cssText });
+                                        child.style.cssText += FORCE_SHOW;
+                                    }
+                                });
+                            } catch (_) {}
                         }
                     });
                 } catch (_) {}
@@ -1152,9 +1165,14 @@ async function parseCurrentPage() {
                         }
                     });
                     // CSS-styled headings: elements with specific classes
-                    container.querySelectorAll('[class*="section-title"], [class*="section-heading"], [class*="block-title"], [class*="heading"]').forEach(el => {
+                    container.querySelectorAll('[class*="section-title"], [class*="section-heading"], [class*="block-title"], [class*="heading"], [class*="__title"], [class*="_title"], [class*="description__"]').forEach(el => {
                         const text = el.textContent.trim();
-                        if (text.length >= 3 && text.length <= 80 && !headingEls.includes(el)) headingEls.push(el);
+                        if (text.length < 3 || text.length > 80 || headingEls.includes(el)) return;
+                        // Skip elements inside nav/header/footer
+                        if (el.closest('nav, header, footer, [role="navigation"], [role="banner"]')) return;
+                        // Skip elements that have block children (likely a container, not a heading)
+                        if (el.querySelector('div, ul, ol, table, p')) return;
+                        headingEls.push(el);
                     });
 
                     // Sort by DOM order
