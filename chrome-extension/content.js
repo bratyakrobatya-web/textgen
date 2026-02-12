@@ -81,15 +81,16 @@
         // Ignore clicks on our own button
         if (e.target === host || host?.contains(e.target)) return;
 
+        // Capture mouse position immediately (before async delay)
+        const mx = e.clientX, my = e.clientY;
+
         // Small delay to let browser finalize selection
         setTimeout(() => {
             const sel = window.getSelection();
             const text = (sel?.toString() || '').trim();
             if (text.length >= 10) {
-                // Get position from selection range end
-                const range = sel.getRangeAt(0);
-                const rect = range.getBoundingClientRect();
-                showAt(rect.right, rect.top, text);
+                // Use mouse cursor position — always visible, works for any selection size
+                showAt(mx, my, text);
             } else {
                 hide();
             }

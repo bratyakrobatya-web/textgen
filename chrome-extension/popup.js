@@ -981,19 +981,6 @@ document.getElementById('hhUrlBtn')?.addEventListener('click', fetchHHVacancy);
 document.getElementById('hhUrlInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchHHVacancy(); });
 document.getElementById('parsePageBtn')?.addEventListener('click', parseCurrentPage);
 
-// Parse focus toggle
-const parseFocusToggle = document.getElementById('parseFocusToggle');
-const parseFocusPanel = document.getElementById('parseFocusPanel');
-const parseFocusText = document.getElementById('parseFocusText');
-
-parseFocusToggle?.addEventListener('click', () => {
-    parseFocusPanel.classList.toggle('open');
-    parseFocusToggle.classList.toggle('active', parseFocusPanel.classList.contains('open'));
-    if (parseFocusPanel.classList.contains('open')) parseFocusText?.focus();
-});
-parseFocusText?.addEventListener('input', () => {
-    chrome.storage.local.set({ parse_focus: parseFocusText.value });
-});
 // ========================
 // Parser mode: auto vs manual
 // ========================
@@ -1007,12 +994,7 @@ function applyParseMode(mode) {
         b.classList.toggle('active', b.dataset.mode === mode);
     });
     const isManual = mode === 'manual';
-    if (parseFocusToggle) parseFocusToggle.style.display = isManual ? '' : 'none';
     if (normalizeBtn) normalizeBtn.style.display = isManual ? '' : 'none';
-    if (!isManual) {
-        parseFocusPanel?.classList.remove('open');
-        parseFocusToggle?.classList.remove('active');
-    }
 }
 
 document.querySelectorAll('.parser-mode-btn').forEach(btn => {
@@ -1023,14 +1005,8 @@ document.querySelectorAll('.parser-mode-btn').forEach(btn => {
     });
 });
 
-chrome.storage.local.get(['parse_focus', 'parse_mode'], (d) => {
-    if (d.parse_focus) parseFocusText.value = d.parse_focus;
+chrome.storage.local.get(['parse_mode'], (d) => {
     applyParseMode(d.parse_mode || 'auto');
-    // Expand focus panel only in manual mode with saved focus text
-    if (d.parse_focus && parseMode === 'manual') {
-        parseFocusPanel?.classList.add('open');
-        parseFocusToggle?.classList.add('active');
-    }
 });
 
 // ========================
@@ -1341,25 +1317,13 @@ async function parseCurrentPage() {
             }
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Нормализация...';
 
-            const focusInstruction = parseFocusText?.value.trim() || '';
-            let systemPrompt = PARSE_SYSTEM_PROMPT;
-            if (focusInstruction) {
-                systemPrompt += '\n\nФОКУС ПОЛЬЗОВАТЕЛЯ (наивысший приоритет):\n'
-                    + 'Пользователь просит сфокусироваться на: ' + focusInstruction + '\n'
-                    + 'Правила фокуса:\n'
-                    + '- Ищи ПО СМЫСЛУ и ПО ВХОЖДЕНИЮ, а не по точному совпадению\n'
-                    + '- Учитывай ВСЕ варианты написания: с большой буквы, капслоком, через дефис\n'
-                    + '- Извлеки ВСЮ информацию, связанную с этим запросом\n'
-                    + '- НЕ ОТКАЗЫВАЙ, даже если точного совпадения нет';
-            }
-
             const resp = await fetch(GATEWAY, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
                 body: JSON.stringify({
                     model: 'claude-haiku-4-5-20251001',
                     max_tokens: 2048,
-                    system: systemPrompt,
+                    system: PARSE_SYSTEM_PROMPT,
                     messages: [{ role: 'user', content: rawText }],
                 }),
             });
@@ -1431,19 +1395,6 @@ async function normalizeDescription() {
     btn.classList.add('loading');
 
     try {
-        // Build system prompt with optional focus instruction
-        const focusInstruction = parseFocusText?.value.trim() || '';
-        let systemPrompt = PARSE_SYSTEM_PROMPT;
-        if (focusInstruction) {
-            systemPrompt += '\n\nФОКУС ПОЛЬЗОВАТЕЛЯ (наивысший приоритет):\n'
-                + 'Пользователь просит сфокусироваться на: ' + focusInstruction + '\n'
-                + 'Правила фокуса:\n'
-                + '- Ищи ПО СМЫСЛУ и ПО ВХОЖДЕНИЮ, а не по точному совпадению. «Водитель-курьер» = «Курьер» = «ВОДИТЕЛЬ-КУРЬЕР» = «водитель курьер»\n'
-                + '- Учитывай ВСЕ варианты написания: с большой буквы, капслоком, через дефис, без дефиса, сокращения\n'
-                + '- Извлеки ВСЮ информацию, связанную с этим запросом. Если есть маркеры вкладок — найди нужную вкладку\n'
-                + '- НЕ ОТКАЗЫВАЙ, даже если точного совпадения нет. Найди максимально похожий контент и извлеки его';
-        }
-
         const resp = await fetch(GATEWAY, {
             method: 'POST',
             headers: {
@@ -1454,7 +1405,7 @@ async function normalizeDescription() {
             body: JSON.stringify({
                 model: 'claude-haiku-4-5-20251001',
                 max_tokens: 2048,
-                system: systemPrompt,
+                system: PARSE_SYSTEM_PROMPT,
                 messages: [{ role: 'user', content: rawText }],
             }),
         });
