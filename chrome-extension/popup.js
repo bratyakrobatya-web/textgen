@@ -1302,9 +1302,12 @@ async function parseCurrentPage() {
             .replace(/\n{3,}/g, '\n\n')
             .substring(0, 12000);
 
-        adDescription.value = rawText;
-        chrome.storage.local.set({ ad_description: adDescription.value });
-        updateDescClear();
+        // In manual mode — show raw text; in auto mode — keep textarea empty until AI finishes
+        if (parseMode !== 'auto') {
+            adDescription.value = rawText;
+            chrome.storage.local.set({ ad_description: adDescription.value });
+            updateDescClear();
+        }
 
         // Auto mode: run AI normalization immediately
         if (parseMode === 'auto') {
