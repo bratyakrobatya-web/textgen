@@ -343,9 +343,12 @@ assert(popupCode.includes("new Event('input'"), 'dispatches input event');
 assert(popupCode.includes("bubbles: true"), 'events bubble for React delegation');
 assert(popupCode.includes("new Event('change'"), 'dispatches change event');
 assert(popupCode.includes("contentEditable === 'true'"), 'detects contenteditable elements');
-assert(popupCode.includes("el.innerHTML = lines.map"), 'uses innerHTML with <p> blocks for ProseMirror');
+assert(popupCode.includes("execCommand('insertHTML'"), 'uses execCommand insertHTML for ProseMirror (goes through editing pipeline)');
 assert(popupCode.includes("'<p>'"), 'wraps lines in <p> tags for ProseMirror');
-assert(!popupCode.includes("execCommand('insertText'"), 'no longer uses execCommand insertText (causes extra spaces)');
+assert(popupCode.includes("execCommand('selectAll'"), 'selects all before replacing content');
+assert(popupCode.includes("execCommand('delete'"), 'deletes selection before inserting');
+assert(!popupCode.includes("execCommand('insertText'"), 'no execCommand insertText (causes extra spaces in ProseMirror)');
+assert(!popupCode.includes("el.innerHTML = lines"), 'no direct innerHTML (bypasses ProseMirror state)');
 
 // ========================
 // 18. Form auto-fill: per-field fill buttons

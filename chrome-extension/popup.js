@@ -1005,9 +1005,12 @@ async function fillCardToForm(cardIndex, target) {
                 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
                 function fillElement(el, value) {
                     if (el.contentEditable === 'true' || isEditable) {
-                        // Convert \n to <p> blocks for ProseMirror
-                        const lines = value.split('\n');
-                        el.innerHTML = lines.map(l => '<p>' + (esc(l) || '<br>') + '</p>').join('');
+                        // Use execCommand pipeline so ProseMirror state stays in sync
+                        el.focus();
+                        document.execCommand('selectAll', false);
+                        document.execCommand('delete', false);
+                        const html = value.split('\n').map(l => '<p>' + (esc(l) || '<br>') + '</p>').join('');
+                        document.execCommand('insertHTML', false, html);
                         el.dispatchEvent(new Event('input', { bubbles: true }));
                     } else {
                         const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -1141,8 +1144,11 @@ async function fillFieldToForm(btn) {
                 const el = document.querySelector(selector);
                 if (!el) return { ok: false };
                 if (el.contentEditable === 'true' || isEditable) {
-                    const lines = value.split('\n');
-                    el.innerHTML = lines.map(l => '<p>' + (esc(l) || '<br>') + '</p>').join('');
+                    el.focus();
+                    document.execCommand('selectAll', false);
+                    document.execCommand('delete', false);
+                    const html = value.split('\n').map(l => '<p>' + (esc(l) || '<br>') + '</p>').join('');
+                    document.execCommand('insertHTML', false, html);
                     el.dispatchEvent(new Event('input', { bubbles: true }));
                 } else {
                     const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
