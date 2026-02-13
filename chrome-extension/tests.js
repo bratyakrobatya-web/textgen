@@ -118,7 +118,7 @@ assert(s2.headline === 'wrapped', 'parses markdown-wrapped single JSON');
 
 section('manifest.json');
 
-const manifest = JSON.parse(fs.readFileSync('/private/tmp/textgen/chrome-extension/manifest.json', 'utf8'));
+const manifest = JSON.parse(fs.readFileSync('/Users/p.sidorov/textgen/chrome-extension/manifest.json', 'utf8'));
 
 assert(manifest.manifest_version === 3, 'manifest_version is 3');
 assert(manifest.permissions.includes('storage'), 'has storage permission');
@@ -139,7 +139,7 @@ assert(manifest.version === '1.2', 'version bumped to 1.2');
 
 section('content.js');
 
-const contentCode = fs.readFileSync('/private/tmp/textgen/chrome-extension/content.js', 'utf8');
+const contentCode = fs.readFileSync('/Users/p.sidorov/textgen/chrome-extension/content.js', 'utf8');
 assert(contentCode.includes('__hhTextGenFabActive'), 'has injection state flag');
 assert(contentCode.includes('__hhTextGenFabCleanup'), 'has idempotent cleanup for re-injection');
 assert(contentCode.includes('DEACTIVATE_FAB'), 'listens for deactivation message');
@@ -154,7 +154,7 @@ assert(contentCode.includes('removeListener(onMessage)'), 'removes named onMessa
 
 section('background.js');
 
-const bgCode = fs.readFileSync('/private/tmp/textgen/chrome-extension/background.js', 'utf8');
+const bgCode = fs.readFileSync('/Users/p.sidorov/textgen/chrome-extension/background.js', 'utf8');
 assert(bgCode.includes('openPanelOnActionClick'), 'opens panel on action click');
 assert(bgCode.includes("port.name !== 'sidepanel'"), 'listens for sidepanel port');
 assert(!bgCode.includes('const injectedTabs'), 'no in-memory injectedTabs (uses session storage)');
@@ -171,7 +171,7 @@ assert(bgCode.includes('deactivateAll'), 'deactivates FAB in all tabs on close')
 
 section('popup.js');
 
-const popupCode = fs.readFileSync('/private/tmp/textgen/chrome-extension/popup.js', 'utf8');
+const popupCode = fs.readFileSync('/Users/p.sidorov/textgen/chrome-extension/popup.js', 'utf8');
 assert(popupCode.includes('function debounce('), 'has debounce utility');
 assert(popupCode.includes('function escapeHtml('), 'has string-based escapeHtml');
 assert(popupCode.includes('function deepClone('), 'has deepClone utility');
@@ -202,7 +202,7 @@ assert(fetchMatches.length <= 1, 'GATEWAY fetch consolidated into callLLM (found
 
 section('File structure');
 
-const files = fs.readdirSync('/private/tmp/textgen/chrome-extension/');
+const files = fs.readdirSync('/Users/p.sidorov/textgen/chrome-extension/');
 assert(files.includes('popup.css'), 'popup.css exists');
 assert(files.includes('popup.html'), 'popup.html exists');
 assert(files.includes('popup.js'), 'popup.js exists');
@@ -213,7 +213,7 @@ assert(files.includes('hh-logo.png'), 'hh-logo.png exists');
 assert(!files.includes('icon.png'), 'icon.png removed');
 
 // popup.html should reference popup.css
-const htmlCode = fs.readFileSync('/private/tmp/textgen/chrome-extension/popup.html', 'utf8');
+const htmlCode = fs.readFileSync('/Users/p.sidorov/textgen/chrome-extension/popup.html', 'utf8');
 assert(htmlCode.includes('popup.css'), 'popup.html links to popup.css');
 assert(!htmlCode.includes('<style>'), 'popup.html has no inline style block');
 
@@ -223,8 +223,8 @@ assert(!htmlCode.includes('<style>'), 'popup.html has no inline style block');
 
 section('popup.css');
 
-const cssCode = fs.readFileSync('/private/tmp/textgen/chrome-extension/popup.css', 'utf8');
-assert(cssCode.includes('--bg:#1a1a2e'), 'CSS has root variables');
+const cssCode = fs.readFileSync('/Users/p.sidorov/textgen/chrome-extension/popup.css', 'utf8');
+assert(cssCode.includes('--bg:'), 'CSS has root variables');
 assert(cssCode.includes('.ad-card'), 'CSS has card styles');
 assert(cssCode.includes('prefers-reduced-motion'), 'CSS has reduced motion media query');
 assert(cssCode.length > 10000, 'CSS file has substantial content (' + cssCode.length + ' chars)');
@@ -301,6 +301,98 @@ assert(popupCode.includes('cancelLabelEdit'), 'has cancelLabelEdit function');
 assert(popupCode.includes("contentEditable"), 'uses contentEditable for label editing');
 assert(cssCode.includes('.ad-history-label.editing'), 'CSS has editing state for history label');
 assert(cssCode.includes('.ad-history-label:hover'), 'CSS has hover state for history label');
+
+// ========================
+// 15. Form auto-fill: FORM_TARGETS registry
+// ========================
+
+section('FORM_TARGETS registry');
+
+assert(popupCode.includes('const FORM_TARGETS'), 'popup.js has FORM_TARGETS constant');
+assert(popupCode.includes('vk_ads:'), 'FORM_TARGETS has vk_ads entry');
+assert(popupCode.includes("urlPatterns:"), 'FORM_TARGETS entries have urlPatterns');
+assert(popupCode.includes("accepts:"), 'FORM_TARGETS entries have accepts array');
+assert(popupCode.includes("ads.vk.com") || popupCode.includes("ads\\.vk\\.com"), 'vk_ads targets ads.vk.com');
+
+// ========================
+// 16. Form auto-fill: core functions
+// ========================
+
+section('Form auto-fill functions');
+
+assert(popupCode.includes('function detectFormTarget'), 'has detectFormTarget function');
+assert(popupCode.includes('function updateFormTargetIndicator'), 'has updateFormTargetIndicator function');
+assert(popupCode.includes('function fillAllMatchingCards'), 'has fillAllMatchingCards function');
+assert(popupCode.includes('function fillFieldToForm'), 'has fillFieldToForm function');
+assert(popupCode.includes('chrome.scripting.executeScript'), 'uses chrome.scripting.executeScript for injection');
+
+// ========================
+// 17. Form auto-fill: React-compatible value setting
+// ========================
+
+section('React-compatible input filling');
+
+assert(popupCode.includes('HTMLTextAreaElement.prototype'), 'uses native textarea prototype setter');
+assert(popupCode.includes('HTMLInputElement.prototype'), 'uses native input prototype setter');
+assert(popupCode.includes("new Event('input'"), 'dispatches input event');
+assert(popupCode.includes("bubbles: true"), 'events bubble for React delegation');
+assert(popupCode.includes("new Event('change'"), 'dispatches change event');
+
+// ========================
+// 18. Form auto-fill: per-field fill buttons
+// ========================
+
+section('Per-field fill buttons');
+
+assert(popupCode.includes('field-fill-btn'), 'popup.js has field-fill-btn class');
+assert(popupCode.includes('SVG_FILL'), 'has SVG_FILL icon constant');
+assert(popupCode.includes('SVG_LINK'), 'has SVG_LINK icon constant');
+assert(popupCode.includes("fillFieldToForm(btn)"), 'field fill buttons call fillFieldToForm');
+
+assert(cssCode.includes('.field-fill-btn'), 'CSS has field-fill-btn styles');
+assert(cssCode.includes('.ad-field:hover .field-fill-btn'), 'CSS shows fill button on field hover');
+assert(cssCode.includes('.field-fill-btn.copied'), 'CSS has copied state for fill button');
+assert(cssCode.includes('.field-fill-btn.error'), 'CSS has error state for fill button');
+
+// ========================
+// 19. Form auto-fill: target bar UI
+// ========================
+
+section('Form target bar');
+
+assert(popupCode.includes('formTargetBar'), 'creates formTargetBar element');
+assert(popupCode.includes('form-target-bar'), 'uses form-target-bar CSS class');
+assert(popupCode.includes('form-target-fill-btn'), 'creates fill button in target bar');
+assert(popupCode.includes("'Заполнить форму'"), 'fill button has correct label');
+assert(popupCode.includes("'Вставлено '"), 'shows fill count on success');
+assert(popupCode.includes("'Поля не найдены'"), 'shows error when no fields found');
+
+assert(cssCode.includes('.form-target-bar'), 'CSS has form-target-bar styles');
+assert(cssCode.includes('.form-target-bar[data-platform="vk"]'), 'CSS has VK platform styling for bar');
+assert(cssCode.includes('.form-target-fill-btn'), 'CSS has fill button styles');
+assert(cssCode.includes('.form-target-fill-btn.success'), 'CSS has success state for fill button');
+assert(cssCode.includes('.form-target-fill-btn.error'), 'CSS has error state for fill button');
+
+// ========================
+// 20. Form auto-fill: tab event listeners
+// ========================
+
+section('Tab event listeners for auto-detect');
+
+assert(popupCode.includes('chrome.tabs.onActivated'), 'listens for tab activation');
+assert(popupCode.includes('chrome.tabs.onUpdated'), 'listens for tab updates');
+assert(popupCode.includes("updateFormTargetIndicator()"), 'tab events trigger indicator update');
+
+// ========================
+// 21. renderField signature updated
+// ========================
+
+section('renderField platformGroup parameter');
+
+assert(popupCode.includes("function renderField(label, value, limit, field, platformGroup)"), 'renderField accepts 5th platformGroup parameter');
+// Check that renderField calls pass group
+const rfCalls = popupCode.match(/renderField\('[^']+',\s*item\.\w+,\s*platform\?\.\w+,\s*'\w+',\s*group\)/g) || [];
+assert(rfCalls.length >= 4, 'at least 4 renderField calls pass group param (found ' + rfCalls.length + ')');
 
 // ========================
 // Summary

@@ -90,6 +90,8 @@ const _panelPort = chrome.runtime?.connect?.({ name: 'sidepanel' });
 // --- SVG Icons ---
 const SVG_CLIPBOARD = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>';
 const SVG_CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const SVG_FILL = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7-7 7 7"/></svg>';
+const SVG_LINK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>';
 
 // --- Ad Text system prompt ---
 const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специализирующийся на HR-рекламе и вакансиях. Твоя задача — создавать эффективные рекламные тексты для размещения на различных рекламных площадках.
@@ -142,6 +144,21 @@ const PLATFORM_GROUP = {
     vk_universal: 'vk', vk_site: 'vk', vk_lead: 'vk', vk_carousel: 'vk',
     yandex_search: 'yandex', yandex_rsya: 'yandex',
     telegram_seeds: 'tg', tgads: 'tg',
+};
+
+// --- Form auto-fill: platform target registry ---
+const FORM_TARGETS = {
+    vk_ads: {
+        label: 'VK Реклама',
+        group: 'vk',
+        urlPatterns: [/^https:\/\/ads\.vk\.com\//, /^https:\/\/vk\.com\/ads/],
+        fields: {
+            headline:         'input[placeholder*="аголов"], [data-testid="title-input"] input',
+            text:             'textarea[placeholder*="ороткое описание"], [data-testid="short-description"] textarea, [data-testid="short-description"] input',
+            long_description: 'textarea[placeholder*="линное описание"], [data-testid="long-description"] textarea',
+        },
+        accepts: ['vk_universal', 'vk_site', 'vk_lead', 'vk_carousel'],
+    },
 };
 
 const STYLE_LABELS = { creative: 'Креативный', balanced: 'Сбалансированный', formal: 'Формальный' };
@@ -562,14 +579,15 @@ function saveVariantFromDOM(card, item) {
 
 function updateCardContent(card, item) {
     const platform = PLATFORMS[item.system];
+    const group = PLATFORM_GROUP[item.system] || '';
     // Update fields
     card.querySelectorAll('.ad-field').forEach(f => f.remove());
     const meta = card.querySelector('.ad-meta');
     let fieldsHtml = '';
-    if (item.headline) fieldsHtml += renderField('Заголовок', item.headline, platform?.headline, 'headline');
-    if (item.subheadline) fieldsHtml += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline');
-    if (item.text) fieldsHtml += renderField('Текст', item.text, platform?.text, 'text');
-    if (item.long_description) fieldsHtml += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description');
+    if (item.headline) fieldsHtml += renderField('Заголовок', item.headline, platform?.headline, 'headline', group);
+    if (item.subheadline) fieldsHtml += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline', group);
+    if (item.text) fieldsHtml += renderField('Текст', item.text, platform?.text, 'text', group);
+    if (item.long_description) fieldsHtml += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description', group);
 
     const tmp = document.createElement('div');
     tmp.innerHTML = fieldsHtml;
@@ -585,6 +603,22 @@ function updateCardContent(card, item) {
             if (el.dataset.max) updateFieldCount(el);
             saveEditedResults();
         });
+    });
+
+    // Reattach per-field copy + fill listeners
+    card.querySelectorAll('.field-copy-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const fieldText = btn.closest('.ad-field').querySelector('.ad-field-text');
+            if (!fieldText) return;
+            navigator.clipboard.writeText(fieldText.textContent.trim()).then(() => {
+                btn.innerHTML = SVG_CHECK;
+                btn.classList.add('copied');
+                setTimeout(() => { btn.innerHTML = SVG_CLIPBOARD; btn.classList.remove('copied'); }, 1200);
+            });
+        });
+    });
+    card.querySelectorAll('.field-fill-btn').forEach(btn => {
+        btn.addEventListener('click', () => fillFieldToForm(btn));
     });
 
     // Update shorten button visibility
@@ -757,6 +791,158 @@ async function shortenCard(cardIndex) {
 // Render result cards
 // ========================
 
+// ========================
+// Form auto-fill engine
+// ========================
+
+async function detectFormTarget() {
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.url) return null;
+        for (const [key, target] of Object.entries(FORM_TARGETS)) {
+            if (target.urlPatterns.some(re => re.test(tab.url))) {
+                return { key, ...target, tabId: tab.id };
+            }
+        }
+    } catch (_) {}
+    return null;
+}
+
+async function updateFormTargetIndicator() {
+    document.getElementById('formTargetBar')?.remove();
+    const target = await detectFormTarget();
+    if (!target || !lastResults?.texts?.length) return;
+    const matching = lastResults.texts.filter(t => target.accepts.includes(t.system));
+    if (!matching.length) return;
+
+    const bar = document.createElement('div');
+    bar.id = 'formTargetBar';
+    bar.className = 'form-target-bar';
+    bar.dataset.platform = target.group;
+    bar.innerHTML = '<span class="form-target-label">' + SVG_LINK + ' ' + escapeHtml(target.label) + '</span>'
+        + '<button class="form-target-fill-btn">Заполнить форму</button>';
+    bar.querySelector('.form-target-fill-btn').addEventListener('click', () => fillAllMatchingCards(target));
+    adResults.insertBefore(bar, adResults.firstChild);
+}
+
+async function fillAllMatchingCards(target) {
+    const cardIndex = lastResults.texts.findIndex(t => target.accepts.includes(t.system));
+    if (cardIndex < 0) return;
+    const card = adResults.querySelector('.ad-card[data-index="' + cardIndex + '"]');
+    const fields = {};
+    card?.querySelectorAll('.ad-field-text[data-field]').forEach(el => {
+        const v = el.textContent.trim();
+        if (v) fields[el.dataset.field] = v;
+    });
+    if (!Object.keys(fields).length) return;
+
+    const fillBtn = document.querySelector('.form-target-fill-btn');
+    if (fillBtn) { fillBtn.disabled = true; fillBtn.textContent = 'Заполнение...'; }
+
+    try {
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: target.tabId },
+            func: (fields, selectorMap) => {
+                function setVal(el, value) {
+                    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                    if (setter) setter.call(el, value);
+                    else el.value = value;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+                }
+                let filled = 0, total = 0;
+                for (const [field, value] of Object.entries(fields)) {
+                    if (!selectorMap[field]) continue;
+                    total++;
+                    const el = document.querySelector(selectorMap[field]);
+                    if (el) { setVal(el, value); filled++; }
+                }
+                return { filled, total };
+            },
+            args: [fields, target.fields],
+        });
+        const r = results[0]?.result;
+        if (fillBtn) {
+            fillBtn.textContent = r.filled ? ('Вставлено ' + r.filled + '/' + r.total) : 'Поля не найдены';
+            fillBtn.classList.toggle('success', r.filled > 0);
+            fillBtn.classList.toggle('error', !r.filled);
+            setTimeout(() => {
+                fillBtn.textContent = 'Заполнить форму';
+                fillBtn.classList.remove('success', 'error');
+                fillBtn.disabled = false;
+            }, 2500);
+        }
+    } catch (err) {
+        if (fillBtn) {
+            fillBtn.textContent = 'Ошибка';
+            fillBtn.classList.add('error');
+            setTimeout(() => {
+                fillBtn.textContent = 'Заполнить форму';
+                fillBtn.classList.remove('error');
+                fillBtn.disabled = false;
+            }, 2000);
+        }
+    }
+}
+
+async function fillFieldToForm(btn) {
+    const fieldEl = btn.closest('.ad-field').querySelector('.ad-field-text');
+    if (!fieldEl) return;
+    const value = fieldEl.textContent.trim();
+    const field = btn.dataset.field;
+    if (!value || !field) return;
+
+    // Find matching selector from FORM_TARGETS
+    let selector = null;
+    for (const target of Object.values(FORM_TARGETS)) {
+        if (target.fields[field]) { selector = target.fields[field]; break; }
+    }
+    if (!selector) return;
+
+    btn.disabled = true;
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) throw new Error('Нет вкладки');
+
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (value, selector) => {
+                const el = document.querySelector(selector);
+                if (!el) return { ok: false };
+                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                if (setter) setter.call(el, value);
+                else el.value = value;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('blur', { bubbles: true }));
+                return { ok: true };
+            },
+            args: [value, selector],
+        });
+        const r = results[0]?.result;
+        if (r?.ok) {
+            btn.innerHTML = SVG_CHECK;
+            btn.classList.add('copied');
+        } else {
+            btn.classList.add('error');
+            btn.title = 'Поле не найдено на странице';
+        }
+        setTimeout(() => {
+            btn.innerHTML = SVG_FILL;
+            btn.classList.remove('copied', 'error');
+            btn.title = 'Вставить в форму';
+        }, 1500);
+    } catch (_) {
+        btn.classList.add('error');
+        setTimeout(() => { btn.classList.remove('error'); }, 1500);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 function renderAdCards(texts, meta) {
     lastResults = { texts: deepClone(texts), meta };
     adResults.innerHTML = '';
@@ -800,10 +986,10 @@ function renderAdCards(texts, meta) {
         html += '<button class="ad-card-copy">' + SVG_CLIPBOARD + ' Копировать всё</button>';
         html += '</div></div>';
 
-        if (item.headline) html += renderField('Заголовок', item.headline, platform?.headline, 'headline');
-        if (item.subheadline) html += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline');
-        if (item.text) html += renderField('Текст', item.text, platform?.text, 'text');
-        if (item.long_description) html += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description');
+        if (item.headline) html += renderField('Заголовок', item.headline, platform?.headline, 'headline', group);
+        if (item.subheadline) html += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline', group);
+        if (item.text) html += renderField('Текст', item.text, platform?.text, 'text', group);
+        if (item.long_description) html += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description', group);
         if (meta) html += '<div class="ad-meta">' + escapeHtml(meta) + '</div>';
 
         card.innerHTML = html;
@@ -842,6 +1028,11 @@ function renderAdCards(texts, meta) {
             });
         });
 
+        // Per-field fill-to-form buttons
+        card.querySelectorAll('.field-fill-btn').forEach(btn => {
+            btn.addEventListener('click', () => fillFieldToForm(btn));
+        });
+
         // Live edit: update char count + save
         card.querySelectorAll('.ad-field-text').forEach(el => {
             el.addEventListener('input', () => {
@@ -862,14 +1053,20 @@ function renderAdCards(texts, meta) {
 
         adResults.appendChild(card);
     });
+
+    updateFormTargetIndicator();
 }
 
-function renderField(label, value, limit, field) {
+function renderField(label, value, limit, field, platformGroup) {
     const clean = value.replace(/\*\*/g, '');
     const len = clean.length;
     const display = escapeHtml(value).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*\*/g, '');
+    const hasTarget = platformGroup && Object.values(FORM_TARGETS).some(t => t.group === platformGroup && t.fields[field]);
     let html = '<div class="ad-field">';
-    html += '<div class="ad-field-label"><span>' + escapeHtml(label) + '</span><button class="field-copy-btn" title="Копировать поле">' + SVG_CLIPBOARD + '</button></div>';
+    html += '<div class="ad-field-label"><span>' + escapeHtml(label) + '</span>';
+    html += '<button class="field-copy-btn" title="Копировать поле">' + SVG_CLIPBOARD + '</button>';
+    if (hasTarget) html += '<button class="field-fill-btn" title="Вставить в форму" data-field="' + field + '">' + SVG_FILL + '</button>';
+    html += '</div>';
     html += '<div class="ad-field-text" contenteditable="true" data-field="' + field + '"' + (limit ? ' data-max="' + limit[1] + '"' : '') + '>' + display + '</div>';
     if (limit) {
         const max = limit[1];
@@ -1559,4 +1756,10 @@ promptResetBtn?.addEventListener('click', () => {
     if (promptText) promptText.value = AD_SYSTEM_PROMPT;
     customPrompt = null;
     chrome.storage.local.remove?.('ad_custom_prompt') || chrome.storage.local.set({ ad_custom_prompt: '' });
+});
+
+// --- Tab change listeners for form target auto-detect ---
+chrome.tabs.onActivated?.addListener(() => updateFormTargetIndicator());
+chrome.tabs.onUpdated?.addListener((_tabId, info) => {
+    if (info.status === 'complete') updateFormTargetIndicator();
 });
