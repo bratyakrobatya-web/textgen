@@ -96,6 +96,8 @@ const SVG_LINK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 // --- Ad Text system prompt ---
 const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специализирующийся на HR-рекламе и вакансиях. Твоя задача — создавать эффективные рекламные тексты для размещения на различных рекламных площадках.
 
+Тематика: ТОЛЬКО HR (подбор персонала, вакансии, найм). Все тексты — от имени работодателя для привлечения соискателей.
+
 Стили написания:
 - Креативный — яркий, эмоциональный язык. Метафоры и образные выражения. Яркие заголовки. Сильный призыв к действию.
 - Формальный — строгий деловой стиль. Четкие информативные заголовки. Корректный призыв к действию. Фокус на фактах.
@@ -103,34 +105,50 @@ const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специа
 
 Базовые правила:
 1. Текст ТОЛЬКО на русском языке
-2. Строго соблюдай лимиты символов для каждой рекламной системы
+2. Строго соблюдай лимиты символов (с пробелами) для каждой рекламной системы
 3. Каждый текст содержит призыв к действию
-4. Без кликбейта и манипуляций
-5. Фокус на выгодах для соискателя
+4. Фокус на выгодах для соискателя
 
-Рекламные системы и лимиты:
+Правила модерации VK Реклама (обязательны для всех VK-форматов):
+- ЗАПРЕЩЕНО: слова целиком ЗАГЛАВНЫМИ буквами (кроме общепринятых аббревиатур: ЗП, ДМС, ТК РФ, ИП, ООО)
+- ЗАПРЕЩЕНО: множественные восклицательные/вопросительные знаки (!!!, ???)
+- ЗАПРЕЩЕНО: кликбейт, гарантии результата, обещания быстрого заработка
+- ЗАПРЕЩЕНО: персонализация (обращение по имени, указание возраста/пола соискателя)
+- ЗАПРЕЩЕНО: орфографические и грамматические ошибки
+- ЗАПРЕЩЕНО: эмодзи в заголовках (headline) и юридической информации
+- Текст объявления должен соответствовать содержанию посадочной страницы
+- Не используй чрезмерную капитализацию и разрядку букв
+- Пиши грамотно, без сленга и нецензурной лексики
+
+Правила эмодзи VK Реклама:
+- Максимум 5 эмодзи на один элемент объявления
+- Эмодзи ЗАПРЕЩЕНЫ в заголовках (headline) — только в text, long_description, button_text
+- Допустимые эмодзи для HR: ✅ 📌 💼 🏢 📋 🔥 💰 ⭐ 🎯 👋 📞 🚀 ✨ 💪 🤝 📍 🕐 👨‍💻 👩‍💼 🔧 ⚡ 📝 🎓 💡 🏆 🩺 ☕ 🍕
+- Не используй эмодзи-заменители текста, только как акценты
+
+Рекламные системы и лимиты (все лимиты с пробелами):
 VK:
-- vk_universal: заголовок 3–40 символов, текст 3–220 символов, длинное описание (long_description) 3–500 символов (развёрнутый текст вакансии, допускается до 3 эмодзи). В длинном описании используй одинарные переносы строк (\\n, не \\n\\n).
-- vk_site: заголовок 3–25 символов, текст 3–90 символов
-- vk_lead: заголовок 3–60 символов, текст 3–220 символов
-- vk_carousel: заголовок 3–40 символов, текст 3–47 символов
+- vk_universal: заголовок 3–40, текст (короткое описание) 3–90, длинное описание (long_description) 3–500, текст рядом с кнопкой (button_text) 3–30. В длинном описании используй одинарные переносы строк (\\n, не \\n\\n). Эмодзи: до 3 в long_description, до 2 в text, запрещены в headline.
+- vk_site: заголовок 3–25, текст 3–90
+- vk_lead: заголовок 3–60, текст 3–220
+- vk_carousel: заголовок 3–40, текст 3–47
 
 Яндекс.Директ:
-- yandex_search: заголовок 1–56 символов, подзаголовок 1–30 символов, текст 1–81 символов
-- yandex_rsya: заголовок 1–56 символов, текст 1–81 символов
+- yandex_search: заголовок 1–56, подзаголовок 1–30, текст 1–81
+- yandex_rsya: заголовок 1–56, текст 1–81
 
 Telegram:
-- telegram_seeds: заголовок 1–56 символов, текст 1–764 символов. Используй одинарные переносы строк (\\n, не \\n\\n), 1-2 ключевых фразы жирным (**текст**), 1-2 эмодзи. Рекомендуемый объём текста: 450-500 символов.
-- tgads: заголовок 1–40 символов, текст 1–160 символов. Заголовок — короткая цепляющая фраза (например: «Ищем операторов на производство!»). Не дублируй содержание заголовка в тексте. Добавь 1 эмодзи.
+- telegram_seeds: заголовок 1–56, текст 1–764. Используй одинарные переносы строк (\\n, не \\n\\n), 1-2 ключевых фразы жирным (**текст**), 1-2 эмодзи. Рекомендуемый объём текста: 450-500 символов.
+- tgads: заголовок 1–40, текст 1–160. Заголовок — короткая цепляющая фраза (например: «Ищем операторов на производство!»). Не дублируй содержание заголовка в тексте. Добавь 1 эмодзи.
 
 Формат ответа — строго JSON без markdown-обёртки:
-{"texts":[{"system":"точный_id_системы","headline":"заголовок","subheadline":"подзаголовок (только для yandex_search)","text":"основной текст","long_description":"длинное описание (только для vk_universal)"}]}
+{"texts":[{"system":"id","headline":"заголовок","subheadline":"подзаголовок (yandex_search)","text":"текст","long_description":"длинное описание (vk_universal)","button_text":"текст кнопки (vk_universal)"}]}
 
 В поле system — только точный ID (vk_universal, vk_site, vk_lead, vk_carousel, yandex_search, yandex_rsya, telegram_seeds, tgads). Генерируй по одному блоку для каждой запрошенной системы.`;
 
 // Platform metadata
 const PLATFORMS = {
-    vk_universal:   { label: 'VK Универсальная', headline: [3, 40], text: [3, 220], long_description: [3, 500], formatting_notes: 'Длинное описание: развёрнутый текст вакансии, допускается до 3 эмодзи.' },
+    vk_universal:   { label: 'VK Универсальная', headline: [3, 40], text: [3, 90], long_description: [3, 500], button_text: [3, 30], formatting_notes: 'Короткое описание: до 2 эмодзи. Длинное описание: развёрнутый текст вакансии, до 3 эмодзи, одинарные \\n. Заголовок: без эмодзи.' },
     vk_site:        { label: 'VK Сайт', headline: [3, 25], text: [3, 90] },
     vk_lead:        { label: 'VK Лид-формы', headline: [3, 60], text: [3, 220] },
     vk_carousel:    { label: 'VK Карусель', headline: [3, 40], text: [3, 47] },
@@ -158,6 +176,7 @@ const FORM_TARGETS = {
             headline:         '[data-name="textblock:::title_40_vkads"] div[contenteditable="true"]',
             text:             '[data-name="textblock:::text_90"] div[contenteditable="true"]',
             long_description: '[data-name="textblock:::text_long"] div[contenteditable="true"]',
+            button_text:      '[data-name="textblock:::title_30_additional"] div[contenteditable="true"]',
         },
         editable: true, // signals ProseMirror contenteditable (not standard inputs)
         accepts: ['vk_universal', 'vk_site', 'vk_lead', 'vk_carousel'],
@@ -359,7 +378,7 @@ function showSkeletons(count) {
 // ========================
 
 function buildStructuredPrompt(platforms, style, description) {
-    const FIELD_KEYS = ['headline', 'subheadline', 'text', 'long_description'];
+    const FIELD_KEYS = ['headline', 'subheadline', 'text', 'long_description', 'button_text'];
     const systems = platforms.map(id => {
         const p = PLATFORMS[id];
         if (!p) return null;
@@ -476,7 +495,7 @@ async function generateCardVariant(cardIndex) {
     // Init _variants from current data if first time
     if (!item._variants) {
         const v0 = {};
-        for (const k of ['headline', 'subheadline', 'text', 'long_description']) { if (item[k]) v0[k] = item[k]; }
+        for (const k of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) { if (item[k]) v0[k] = item[k]; }
         item._variants = [v0];
         item._vi = 0;
     }
@@ -509,7 +528,7 @@ async function generateCardVariant(cardIndex) {
 
         // Push new variant
         const v = {};
-        for (const k of ['headline', 'subheadline', 'text', 'long_description']) { if (newItem[k]) v[k] = newItem[k]; }
+        for (const k of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) { if (newItem[k]) v[k] = newItem[k]; }
         item._variants.push(v);
         item._vi = item._variants.length - 1;
 
@@ -565,7 +584,7 @@ function switchVariant(cardIndex, delta) {
 
 function applyVariant(item) {
     const v = item._variants[item._vi];
-    for (const k of ['headline', 'subheadline', 'text', 'long_description']) {
+    for (const k of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) {
         if (v[k] !== undefined) item[k] = v[k];
         else delete item[k];
     }
@@ -591,6 +610,7 @@ function updateCardContent(card, item) {
     if (item.subheadline) fieldsHtml += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline', group);
     if (item.text) fieldsHtml += renderField('Текст', item.text, platform?.text, 'text', group);
     if (item.long_description) fieldsHtml += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description', group);
+    if (item.button_text) fieldsHtml += renderField('Текст кнопки', item.button_text, platform?.button_text, 'button_text', group);
 
     const tmp = document.createElement('div');
     tmp.innerHTML = fieldsHtml;
@@ -630,6 +650,7 @@ function updateCardContent(card, item) {
         if (item.headline && platform.headline && item.headline.replace(/\*\*/g,'').length > platform.headline[1]) hasOverLimit = true;
         if (item.text && platform.text && item.text.replace(/\*\*/g,'').length > platform.text[1]) hasOverLimit = true;
         if (item.long_description && platform.long_description && item.long_description.replace(/\*\*/g,'').length > platform.long_description[1]) hasOverLimit = true;
+        if (item.button_text && platform.button_text && item.button_text.replace(/\*\*/g,'').length > platform.button_text[1]) hasOverLimit = true;
     }
     const oldShorten = card.querySelector('.ad-card-shorten');
     if (hasOverLimit && !oldShorten) {
@@ -752,12 +773,14 @@ async function shortenCard(cardIndex) {
     if (item.subheadline && platform.subheadline) limits.push('Подзаголовок: \u2264' + platform.subheadline[1] + ' символов (цель: ' + Math.round(platform.subheadline[1] * 0.7) + ')');
     if (item.text && platform.text) limits.push('Текст: \u2264' + platform.text[1] + ' символов (цель: ' + Math.round(platform.text[1] * 0.7) + ')');
     if (item.long_description && platform.long_description) limits.push('Длинное описание: \u2264' + platform.long_description[1] + ' символов (цель: ' + Math.round(platform.long_description[1] * 0.7) + ')');
+    if (item.button_text && platform.button_text) limits.push('Текст кнопки: \u2264' + platform.button_text[1] + ' символов (цель: ' + Math.round(platform.button_text[1] * 0.7) + ')');
 
-    const shortenSystem = 'Ты — редактор-сократитель. Задача — максимально сократить рекламный текст, сохранив смысл и призыв к действию.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных.\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"...","long_description":"...(если есть)"}';
+    const shortenSystem = 'Ты — редактор-сократитель. Задача — максимально сократить рекламный текст, сохранив смысл и призыв к действию.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных.\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"...","long_description":"...(если есть)","button_text":"...(если есть)"}';
     const shortenUser = 'Площадка: ' + platform.label + ' (' + item.system + ')\nТЕКУЩИЕ ТЕКСТЫ:\nЗаголовок: ' + (item.headline || '') +
         (item.subheadline ? '\nПодзаголовок: ' + item.subheadline : '') +
         '\nТекст: ' + (item.text || '') +
         (item.long_description ? '\nДлинное описание: ' + item.long_description : '') +
+        (item.button_text ? '\nТекст кнопки: ' + item.button_text : '') +
         '\n\nЛИМИТЫ:\n' + limits.join('\n') +
         '\n\nСоздай МАКСИМАЛЬНО КОРОТКУЮ версию.';
 
@@ -775,6 +798,7 @@ async function shortenCard(cardIndex) {
         if (parsed.subheadline) item.subheadline = parsed.subheadline;
         if (parsed.text) item.text = parsed.text;
         if (parsed.long_description) item.long_description = parsed.long_description;
+        if (parsed.button_text) item.button_text = parsed.button_text;
 
         lastResults.texts[cardIndex] = item;
         if (adHistory[historyIndex]) {
@@ -991,6 +1015,7 @@ function renderAdCards(texts, meta) {
             if (item.subheadline && platform.subheadline && item.subheadline.replace(/\*\*/g,'').length > platform.subheadline[1]) hasOverLimit = true;
             if (item.text && platform.text && item.text.replace(/\*\*/g,'').length > platform.text[1]) hasOverLimit = true;
             if (item.long_description && platform.long_description && item.long_description.replace(/\*\*/g,'').length > platform.long_description[1]) hasOverLimit = true;
+            if (item.button_text && platform.button_text && item.button_text.replace(/\*\*/g,'').length > platform.button_text[1]) hasOverLimit = true;
         }
 
         const hasVariants = item._variants && item._variants.length > 1;
@@ -1014,6 +1039,7 @@ function renderAdCards(texts, meta) {
         if (item.subheadline) html += renderField('Подзаголовок', item.subheadline, platform?.subheadline, 'subheadline', group);
         if (item.text) html += renderField('Текст', item.text, platform?.text, 'text', group);
         if (item.long_description) html += renderField('Длинное описание', item.long_description, platform?.long_description, 'long_description', group);
+        if (item.button_text) html += renderField('Текст кнопки', item.button_text, platform?.button_text, 'button_text', group);
         if (meta) html += '<div class="ad-meta">' + escapeHtml(meta) + '</div>';
 
         card.innerHTML = html;
@@ -1274,7 +1300,7 @@ historySearchInput?.addEventListener('input', () => {
         // Search in label and all text fields
         const haystack = [
             entry.label || '',
-            ...(entry.texts || []).map(t => [t.headline, t.subheadline, t.text, t.long_description].filter(Boolean).join(' ')),
+            ...(entry.texts || []).map(t => [t.headline, t.subheadline, t.text, t.long_description, t.button_text].filter(Boolean).join(' ')),
         ].join(' ').toLowerCase();
         if (!haystack.includes(q)) return;
 

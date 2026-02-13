@@ -329,6 +329,7 @@ assert(popupCode.includes('editable: true'), 'FORM_TARGETS marks VK Ads as conte
 assert(popupCode.includes('data-name="textblock:::title_40_vkads"'), 'VK Ads headline selector uses data-name');
 assert(popupCode.includes('data-name="textblock:::text_90"'), 'VK Ads text selector uses data-name');
 assert(popupCode.includes('data-name="textblock:::text_long"'), 'VK Ads long_description selector uses data-name');
+assert(popupCode.includes('data-name="textblock:::title_30_additional"'), 'VK Ads button_text selector uses data-name');
 
 // ========================
 // 17. Form auto-fill: React-compatible value setting
@@ -400,6 +401,33 @@ assert(popupCode.includes("function renderField(label, value, limit, field, plat
 // Check that renderField calls pass group
 const rfCalls = popupCode.match(/renderField\('[^']+',\s*item\.\w+,\s*platform\?\.\w+,\s*'\w+',\s*group\)/g) || [];
 assert(rfCalls.length >= 4, 'at least 4 renderField calls pass group param (found ' + rfCalls.length + ')');
+
+// ========================
+// 22. VK Universal: button_text field + updated limits
+// ========================
+
+section('VK Universal button_text + limits');
+
+assert(popupCode.includes("button_text: [3, 30]"), 'PLATFORMS.vk_universal has button_text field with 30 char limit');
+assert(popupCode.includes("text: [3, 90]") && popupCode.includes('vk_universal'), 'vk_universal text limit is 90 (not 220)');
+assert(popupCode.includes("'button_text'"), 'button_text is in FIELD_KEYS');
+assert(popupCode.includes("item.button_text") && popupCode.includes("renderField('Текст кнопки'"), 'button_text field renders in cards');
+assert(popupCode.includes("parsed.button_text") && popupCode.includes("item.button_text = parsed.button_text"), 'shortenCard handles button_text');
+
+// ========================
+// 23. VK moderation rules in system prompt
+// ========================
+
+section('VK moderation rules in prompt');
+
+assert(popupCode.includes('ЗАПРЕЩЕНО') && popupCode.includes('ЗАГЛАВНЫМИ'), 'prompt forbids all-caps words');
+assert(popupCode.includes('кликбейт'), 'prompt forbids clickbait');
+assert(popupCode.includes('персонализация'), 'prompt forbids personalization');
+assert(popupCode.includes('орфографические'), 'prompt requires spelling accuracy');
+assert(popupCode.includes('Максимум 5 эмодзи'), 'prompt limits emojis per element');
+assert(popupCode.includes('ЗАПРЕЩЕНЫ в заголовках'), 'prompt prohibits emojis in headlines');
+assert(popupCode.includes('Допустимые эмодзи для HR'), 'prompt lists HR-appropriate emojis');
+assert(popupCode.includes('ТОЛЬКО HR'), 'prompt specifies HR-only topic');
 
 // ========================
 // Summary
