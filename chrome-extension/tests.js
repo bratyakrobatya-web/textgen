@@ -325,6 +325,10 @@ assert(popupCode.includes('function updateFormTargetIndicator'), 'has updateForm
 assert(popupCode.includes('function fillAllMatchingCards'), 'has fillAllMatchingCards function');
 assert(popupCode.includes('function fillFieldToForm'), 'has fillFieldToForm function');
 assert(popupCode.includes('chrome.scripting.executeScript'), 'uses chrome.scripting.executeScript for injection');
+assert(popupCode.includes('editable: true'), 'FORM_TARGETS marks VK Ads as contenteditable');
+assert(popupCode.includes('data-name="textblock:::title_40_vkads"'), 'VK Ads headline selector uses data-name');
+assert(popupCode.includes('data-name="textblock:::text_90"'), 'VK Ads text selector uses data-name');
+assert(popupCode.includes('data-name="textblock:::text_long"'), 'VK Ads long_description selector uses data-name');
 
 // ========================
 // 17. Form auto-fill: React-compatible value setting
@@ -332,11 +336,14 @@ assert(popupCode.includes('chrome.scripting.executeScript'), 'uses chrome.script
 
 section('React-compatible input filling');
 
-assert(popupCode.includes('HTMLTextAreaElement.prototype'), 'uses native textarea prototype setter');
-assert(popupCode.includes('HTMLInputElement.prototype'), 'uses native input prototype setter');
+assert(popupCode.includes('HTMLTextAreaElement.prototype'), 'uses native textarea prototype setter for standard inputs');
+assert(popupCode.includes('HTMLInputElement.prototype'), 'uses native input prototype setter for standard inputs');
 assert(popupCode.includes("new Event('input'"), 'dispatches input event');
 assert(popupCode.includes("bubbles: true"), 'events bubble for React delegation');
 assert(popupCode.includes("new Event('change'"), 'dispatches change event');
+assert(popupCode.includes("contentEditable === 'true'"), 'detects contenteditable elements');
+assert(popupCode.includes("execCommand('insertText'"), 'uses execCommand for ProseMirror/contenteditable');
+assert(popupCode.includes("selectAllChildren"), 'selects all content before inserting');
 
 // ========================
 // 18. Form auto-fill: per-field fill buttons

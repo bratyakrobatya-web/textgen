@@ -152,11 +152,14 @@ const FORM_TARGETS = {
         label: 'VK Реклама',
         group: 'vk',
         urlPatterns: [/^https:\/\/ads\.vk\.com\//, /^https:\/\/vk\.com\/ads/],
+        // VK Ads uses ProseMirror contenteditable divs, not <input>/<textarea>
+        // data-name on container is the most stable selector
         fields: {
-            headline:         'input[placeholder*="аголов"], [data-testid="title-input"] input',
-            text:             'textarea[placeholder*="ороткое описание"], [data-testid="short-description"] textarea, [data-testid="short-description"] input',
-            long_description: 'textarea[placeholder*="линное описание"], [data-testid="long-description"] textarea',
+            headline:         '[data-name="textblock:::title_40_vkads"] div[contenteditable="true"]',
+            text:             '[data-name="textblock:::text_90"] div[contenteditable="true"]',
+            long_description: '[data-name="textblock:::text_long"] div[contenteditable="true"]',
         },
+        editable: true, // signals ProseMirror contenteditable (not standard inputs)
         accepts: ['vk_universal', 'vk_site', 'vk_lead', 'vk_carousel'],
     },
 };
@@ -842,26 +845,35 @@ async function fillAllMatchingCards(target) {
     try {
         const results = await chrome.scripting.executeScript({
             target: { tabId: target.tabId },
-            func: (fields, selectorMap) => {
-                function setVal(el, value) {
-                    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-                    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                    if (setter) setter.call(el, value);
-                    else el.value = value;
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+            func: (fields, selectorMap, isEditable) => {
+                function fillElement(el, value) {
+                    if (el.contentEditable === 'true' || isEditable) {
+                        // ProseMirror / contenteditable: focus, select all, insert via execCommand
+                        el.focus();
+                        const sel = window.getSelection();
+                        sel.selectAllChildren(el);
+                        document.execCommand('insertText', false, value);
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                    } else {
+                        // Standard input/textarea
+                        const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                        if (setter) setter.call(el, value);
+                        else el.value = value;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
                 }
                 let filled = 0, total = 0;
                 for (const [field, value] of Object.entries(fields)) {
                     if (!selectorMap[field]) continue;
                     total++;
                     const el = document.querySelector(selectorMap[field]);
-                    if (el) { setVal(el, value); filled++; }
+                    if (el) { fillElement(el, value); filled++; }
                 }
                 return { filled, total };
             },
-            args: [fields, target.fields],
+            args: [fields, target.fields, !!target.editable],
         });
         const r = results[0]?.result;
         if (fillBtn) {
@@ -894,10 +906,15 @@ async function fillFieldToForm(btn) {
     const field = btn.dataset.field;
     if (!value || !field) return;
 
-    // Find matching selector from FORM_TARGETS
+    // Find matching target and selector from FORM_TARGETS
     let selector = null;
+    let isEditable = false;
     for (const target of Object.values(FORM_TARGETS)) {
-        if (target.fields[field]) { selector = target.fields[field]; break; }
+        if (target.fields[field]) {
+            selector = target.fields[field];
+            isEditable = !!target.editable;
+            break;
+        }
     }
     if (!selector) return;
 
@@ -908,19 +925,26 @@ async function fillFieldToForm(btn) {
 
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            func: (value, selector) => {
+            func: (value, selector, isEditable) => {
                 const el = document.querySelector(selector);
                 if (!el) return { ok: false };
-                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                if (setter) setter.call(el, value);
-                else el.value = value;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-                el.dispatchEvent(new Event('blur', { bubbles: true }));
+                if (el.contentEditable === 'true' || isEditable) {
+                    el.focus();
+                    const sel = window.getSelection();
+                    sel.selectAllChildren(el);
+                    document.execCommand('insertText', false, value);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                } else {
+                    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                    if (setter) setter.call(el, value);
+                    else el.value = value;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
                 return { ok: true };
             },
-            args: [value, selector],
+            args: [value, selector, isEditable],
         });
         const r = results[0]?.result;
         if (r?.ok) {
