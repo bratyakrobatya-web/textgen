@@ -87,6 +87,33 @@ async function callLLM({ system, userMessage, model, maxTokens, timeoutMs = 3000
 // --- Connect to background to signal side panel is open ---
 const _panelPort = chrome.runtime?.connect?.({ name: 'sidepanel' });
 
+// --- Emoji hard limit (VK Ads: max 5 per ad total) ---
+const EMOJI_RE = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*/gu;
+function stripExcessEmoji(item, max) {
+    if (!max) max = 5;
+    const fields = ['text', 'long_description'];
+    let total = 0;
+    for (const f of fields) {
+        if (!item[f]) continue;
+        const matches = [...item[f].matchAll(EMOJI_RE)];
+        total += matches.length;
+    }
+    if (total <= max) return;
+    // Remove excess emoji from the end backwards
+    let excess = total - max;
+    for (let fi = fields.length - 1; fi >= 0 && excess > 0; fi--) {
+        const f = fields[fi];
+        if (!item[f]) continue;
+        const matches = [...item[f].matchAll(EMOJI_RE)];
+        while (matches.length && excess > 0) {
+            const m = matches.pop();
+            item[f] = item[f].substring(0, m.index) + item[f].substring(m.index + m[0].length);
+            excess--;
+        }
+        item[f] = item[f].replace(/  +/g, ' ').trim();
+    }
+}
+
 // --- SVG Icons ---
 const SVG_CLIPBOARD = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>';
 const SVG_CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -112,23 +139,26 @@ const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специа
 Правила модерации VK Реклама (обязательны для всех VK-форматов):
 - ЗАПРЕЩЕНО: слова целиком ЗАГЛАВНЫМИ буквами (кроме общепринятых аббревиатур: ЗП, ДМС, ТК РФ, ИП, ООО)
 - ЗАПРЕЩЕНО: множественные восклицательные/вопросительные знаки (!!!, ???)
-- ЗАПРЕЩЕНО: кликбейт, гарантии результата, обещания быстрого заработка
-- ЗАПРЕЩЕНО: персонализация (обращение по имени, указание возраста/пола соискателя)
+- ЗАПРЕЩЕНО: кликбейт, гарантии результата, обещания быстрого заработка. Не используй слова: «Осторожно», «Жми», «Шок», «Сенсация»
+- ЗАПРЕЩЕНО: персонализация (обращение по имени, указание конкретного возраста >19 лет, пола, дня рождения)
 - ЗАПРЕЩЕНО: орфографические и грамматические ошибки
-- ЗАПРЕЩЕНО: эмодзи в заголовках (headline) и юридической информации
+- ЗАПРЕЩЕНО: эмодзи в заголовках (headline), тексте рядом с кнопкой (button_text) и юридической информации
+- ЗАПРЕЩЕНО: превосходная степень без подтверждения («Самый лучший», «Номер 1», «Лучшие условия»)
+- ЗАПРЕЩЕНО: текстовые смайлы (:), ((, ;) и т.п.) — только эмодзи из разрешённого списка
+- ЗАПРЕЩЕНО: ЗаБоРЧиК, р а з р я д к а, $имволы и цифры внутри слов
+- Текст объявления НЕ должен быть продолжением заголовка — заголовок и текст самостоятельны
 - Текст объявления должен соответствовать содержанию посадочной страницы
-- Не используй чрезмерную капитализацию и разрядку букв
 - Пиши грамотно, без сленга и нецензурной лексики
 
 Правила эмодзи VK Реклама:
-- Максимум 5 эмодзи на один элемент объявления
-- Эмодзи ЗАПРЕЩЕНЫ в заголовках (headline) — только в text, long_description, button_text
-- Допустимые эмодзи для HR: ✅ 📌 💼 🏢 📋 🔥 💰 ⭐ 🎯 👋 📞 🚀 ✨ 💪 🤝 📍 🕐 👨‍💻 👩‍💼 🔧 ⚡ 📝 🎓 💡 🏆 🩺 ☕ 🍕
+- Максимум 5 эмодзи на всё объявление (суммарно по всем текстовым полям)
+- Эмодзи ЗАПРЕЩЕНЫ в заголовках (headline), тексте рядом с кнопкой (button_text) и юридической информации — только в text и long_description
+- Допустимые эмодзи для HR (из официального whitelist VK): 📌 💼 🏢 📋 🔥 ⭐ 🎯 👋 📞 🚀 ✨ 💪 🤝 📍 🕐 🔧 ⚡ 📝 🎓 💡 🏆 🩺 ☕ 🍕 👍 👏 🙌 📊 📈 📅 💻 📱 💎 🏅 🥇 🎉 🎁 🔑 🌟 🔔 📢 🎨 ⚙ 🛡 🔒 😊 😉 👀 🎤 📦
 - Не используй эмодзи-заменители текста, только как акценты
 
 Рекламные системы и лимиты (все лимиты с пробелами):
 VK:
-- vk_universal: заголовок 3–40, текст (короткое описание) 3–90, длинное описание (long_description) 3–500, текст рядом с кнопкой (button_text) 3–30. В длинном описании используй одинарные переносы строк (\\n, не \\n\\n). Эмодзи: до 3 в long_description, до 2 в text, запрещены в headline.
+- vk_universal: заголовок 3–40, текст (короткое описание) 3–90, длинное описание (long_description) 3–500, текст рядом с кнопкой (button_text) 3–30. В длинном описании используй одинарные переносы строк (\\n, не \\n\\n). Эмодзи: до 3 в long_description, до 2 в text, запрещены в headline и button_text.
 - vk_site: заголовок 3–25, текст 3–90
 - vk_lead: заголовок 3–60, текст 3–220
 - vk_carousel: заголовок 3–40, текст 3–47
@@ -148,7 +178,7 @@ Telegram:
 
 // Platform metadata
 const PLATFORMS = {
-    vk_universal:   { label: 'VK Универсальная', headline: [3, 40], text: [3, 90], long_description: [3, 500], button_text: [3, 30], formatting_notes: 'Короткое описание: до 2 эмодзи. Длинное описание: развёрнутый текст вакансии, до 3 эмодзи, одинарные \\n. Заголовок: без эмодзи.' },
+    vk_universal:   { label: 'VK Универсальная', headline: [3, 40], text: [3, 90], long_description: [3, 500], button_text: [3, 30], formatting_notes: 'Короткое описание: до 2 эмодзи. Длинное описание: развёрнутый текст вакансии, до 3 эмодзи, одинарные \\n. Заголовок и текст кнопки: без эмодзи.' },
     vk_site:        { label: 'VK Сайт', headline: [3, 25], text: [3, 90] },
     vk_lead:        { label: 'VK Лид-формы', headline: [3, 60], text: [3, 220] },
     vk_carousel:    { label: 'VK Карусель', headline: [3, 40], text: [3, 47] },
@@ -449,13 +479,15 @@ async function generateAdTexts() {
 
         const parsed = parseJsonResponse(rawText);
         const texts = parsed.texts || [];
-        // Collapse double newlines to single for verbose platforms
+        // Collapse double newlines to single for verbose platforms + emoji limit
         texts.forEach(t => {
             if (t.system === 'telegram_seeds' || t.system === 'vk_universal') {
                 for (const k of ['text', 'long_description']) {
                     if (t[k]) t[k] = t[k].replace(/\n{2,}/g, '\n');
                 }
             }
+            const group = PLATFORM_GROUP[t.system] || '';
+            if (group === 'vk') stripExcessEmoji(t, 5);
         });
         const entry = {
             id: Date.now(),
@@ -522,6 +554,10 @@ async function generateCardVariant(cardIndex) {
         const parsed = parseJsonResponse(rawText);
         const newItem = (parsed.texts || [])[0];
         if (!newItem) throw new Error('Пустой ответ');
+
+        // Enforce VK emoji limit
+        const varGroup = PLATFORM_GROUP[item.system] || '';
+        if (varGroup === 'vk') stripExcessEmoji(newItem, 5);
 
         // Save current DOM edits before switching
         saveVariantFromDOM(card, item);
@@ -769,20 +805,23 @@ async function shortenCard(cardIndex) {
     busyCards.add(cardIndex);
 
     const limits = [];
-    if (item.headline && platform.headline) limits.push('Заголовок: \u2264' + platform.headline[1] + ' символов (цель: ' + Math.round(platform.headline[1] * 0.7) + ')');
-    if (item.subheadline && platform.subheadline) limits.push('Подзаголовок: \u2264' + platform.subheadline[1] + ' символов (цель: ' + Math.round(platform.subheadline[1] * 0.7) + ')');
-    if (item.text && platform.text) limits.push('Текст: \u2264' + platform.text[1] + ' символов (цель: ' + Math.round(platform.text[1] * 0.7) + ')');
-    if (item.long_description && platform.long_description) limits.push('Длинное описание: \u2264' + platform.long_description[1] + ' символов (цель: ' + Math.round(platform.long_description[1] * 0.7) + ')');
-    if (item.button_text && platform.button_text) limits.push('Текст кнопки: \u2264' + platform.button_text[1] + ' символов (цель: ' + Math.round(platform.button_text[1] * 0.7) + ')');
+    if (item.headline && platform.headline) limits.push('Заголовок: ЖЁСТКИЙ МАКСИМУМ ' + platform.headline[1] + ' символов с пробелами');
+    if (item.subheadline && platform.subheadline) limits.push('Подзаголовок: ЖЁСТКИЙ МАКСИМУМ ' + platform.subheadline[1] + ' символов с пробелами');
+    if (item.text && platform.text) limits.push('Текст: ЖЁСТКИЙ МАКСИМУМ ' + platform.text[1] + ' символов с пробелами');
+    if (item.long_description && platform.long_description) {
+        const hardMax = Math.round(platform.long_description[1] * 0.8);
+        limits.push('Длинное описание: ЖЁСТКИЙ МАКСИМУМ ' + hardMax + ' символов с пробелами (ни символа больше!)');
+    }
+    if (item.button_text && platform.button_text) limits.push('Текст кнопки: ЖЁСТКИЙ МАКСИМУМ ' + platform.button_text[1] + ' символов с пробелами');
 
-    const shortenSystem = 'Ты — редактор-сократитель. Задача — максимально сократить рекламный текст, сохранив смысл и призыв к действию.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных.\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"...","long_description":"...(если есть)","button_text":"...(если есть)"}';
+    const shortenSystem = 'Ты — редактор-сократитель. Задача — сократить рекламный текст, строго уложившись в лимиты символов.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных. Считай каждый символ включая пробелы. НЕ ПРЕВЫШАЙ указанные лимиты.\nМаксимум 5 эмодзи на всё объявление.\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"...","long_description":"...(если есть)","button_text":"...(если есть)"}';
     const shortenUser = 'Площадка: ' + platform.label + ' (' + item.system + ')\nТЕКУЩИЕ ТЕКСТЫ:\nЗаголовок: ' + (item.headline || '') +
         (item.subheadline ? '\nПодзаголовок: ' + item.subheadline : '') +
         '\nТекст: ' + (item.text || '') +
         (item.long_description ? '\nДлинное описание: ' + item.long_description : '') +
         (item.button_text ? '\nТекст кнопки: ' + item.button_text : '') +
-        '\n\nЛИМИТЫ:\n' + limits.join('\n') +
-        '\n\nСоздай МАКСИМАЛЬНО КОРОТКУЮ версию.';
+        '\n\nЛИМИТЫ (СТРОГО НЕ ПРЕВЫШАТЬ):\n' + limits.join('\n') +
+        '\n\nСократи, уложившись в каждый лимит.';
 
     try {
         const data = await callLLM({
@@ -799,6 +838,10 @@ async function shortenCard(cardIndex) {
         if (parsed.text) item.text = parsed.text;
         if (parsed.long_description) item.long_description = parsed.long_description;
         if (parsed.button_text) item.button_text = parsed.button_text;
+
+        // Enforce VK emoji limit after shorten
+        const shrGroup = PLATFORM_GROUP[item.system] || '';
+        if (shrGroup === 'vk') stripExcessEmoji(item, 5);
 
         lastResults.texts[cardIndex] = item;
         if (adHistory[historyIndex]) {
@@ -836,34 +879,42 @@ async function detectFormTarget() {
 }
 
 async function updateFormTargetIndicator() {
+    // Remove legacy standalone bar
     document.getElementById('formTargetBar')?.remove();
     const target = await detectFormTarget();
     if (!target || !lastResults?.texts?.length) return;
-    const matching = lastResults.texts.filter(t => target.accepts.includes(t.system));
-    if (!matching.length) return;
 
-    const bar = document.createElement('div');
-    bar.id = 'formTargetBar';
-    bar.className = 'form-target-bar';
-    bar.dataset.platform = target.group;
-    bar.innerHTML = '<span class="form-target-label">' + SVG_LINK + ' ' + escapeHtml(target.label) + '</span>'
-        + '<button class="form-target-fill-btn">Заполнить форму</button>';
-    bar.querySelector('.form-target-fill-btn').addEventListener('click', () => fillAllMatchingCards(target));
-    adResults.insertBefore(bar, adResults.firstChild);
+    // Add fill/clear footer to each matching card
+    lastResults.texts.forEach((t, idx) => {
+        if (!target.accepts.includes(t.system)) return;
+        const card = adResults.querySelector('.ad-card[data-index="' + idx + '"]');
+        if (!card || card.querySelector('.card-form-bar')) return;
+
+        const bar = document.createElement('div');
+        bar.className = 'card-form-bar';
+        bar.dataset.platform = target.group;
+        bar.innerHTML = '<span class="form-target-label">' + SVG_LINK + ' ' + escapeHtml(target.label) + '</span>'
+            + '<span class="card-form-btns">'
+            + '<button class="form-target-clear-btn">Очистить</button>'
+            + '<button class="form-target-fill-btn">Заполнить форму</button>'
+            + '</span>';
+        bar.querySelector('.form-target-fill-btn').addEventListener('click', () => fillCardToForm(idx, target));
+        bar.querySelector('.form-target-clear-btn').addEventListener('click', () => clearFormFields(target));
+        card.appendChild(bar);
+    });
 }
 
-async function fillAllMatchingCards(target) {
-    const cardIndex = lastResults.texts.findIndex(t => target.accepts.includes(t.system));
-    if (cardIndex < 0) return;
+async function fillCardToForm(cardIndex, target) {
     const card = adResults.querySelector('.ad-card[data-index="' + cardIndex + '"]');
+    if (!card) return;
     const fields = {};
-    card?.querySelectorAll('.ad-field-text[data-field]').forEach(el => {
+    card.querySelectorAll('.ad-field-text[data-field]').forEach(el => {
         const v = el.textContent.trim();
         if (v) fields[el.dataset.field] = v;
     });
     if (!Object.keys(fields).length) return;
 
-    const fillBtn = document.querySelector('.form-target-fill-btn');
+    const fillBtn = card.querySelector('.form-target-fill-btn');
     if (fillBtn) { fillBtn.disabled = true; fillBtn.textContent = 'Заполнение...'; }
 
     try {
@@ -872,14 +923,12 @@ async function fillAllMatchingCards(target) {
             func: (fields, selectorMap, isEditable) => {
                 function fillElement(el, value) {
                     if (el.contentEditable === 'true' || isEditable) {
-                        // ProseMirror / contenteditable: focus, select all, insert via execCommand
                         el.focus();
                         const sel = window.getSelection();
                         sel.selectAllChildren(el);
                         document.execCommand('insertText', false, value);
                         el.dispatchEvent(new Event('input', { bubbles: true }));
                     } else {
-                        // Standard input/textarea
                         const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
                         const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
                         if (setter) setter.call(el, value);
@@ -920,6 +969,63 @@ async function fillAllMatchingCards(target) {
                 fillBtn.disabled = false;
             }, 2000);
         }
+    }
+}
+
+async function clearFormFields(target) {
+    const clearBtn = document.querySelector('.form-target-clear-btn');
+    if (clearBtn) { clearBtn.disabled = true; clearBtn.textContent = 'Очистка...'; }
+
+    try {
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: target.tabId },
+            func: (selectorMap, isEditable) => {
+                let cleared = 0;
+                for (const selector of Object.values(selectorMap)) {
+                    const el = document.querySelector(selector);
+                    if (!el) continue;
+                    if (el.contentEditable === 'true' || isEditable) {
+                        el.focus();
+                        const sel = window.getSelection();
+                        sel.selectAllChildren(el);
+                        document.execCommand('delete', false);
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                    } else {
+                        const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                        if (setter) setter.call(el, '');
+                        else el.value = '';
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    cleared++;
+                }
+                return { cleared };
+            },
+            args: [target.fields, !!target.editable],
+        });
+        const r = results[0]?.result;
+        // Update ALL clear buttons in all cards
+        document.querySelectorAll('.form-target-clear-btn').forEach(btn => {
+            btn.textContent = r.cleared ? 'Очищено' : 'Поля не найдены';
+            btn.classList.toggle('success', r.cleared > 0);
+            btn.classList.toggle('error', !r.cleared);
+            setTimeout(() => {
+                btn.textContent = 'Очистить';
+                btn.classList.remove('success', 'error');
+                btn.disabled = false;
+            }, 2000);
+        });
+    } catch (err) {
+        document.querySelectorAll('.form-target-clear-btn').forEach(btn => {
+            btn.textContent = 'Ошибка';
+            btn.classList.add('error');
+            setTimeout(() => {
+                btn.textContent = 'Очистить';
+                btn.classList.remove('error');
+                btn.disabled = false;
+            }, 2000);
+        });
     }
 }
 

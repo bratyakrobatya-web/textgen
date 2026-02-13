@@ -322,7 +322,7 @@ section('Form auto-fill functions');
 
 assert(popupCode.includes('function detectFormTarget'), 'has detectFormTarget function');
 assert(popupCode.includes('function updateFormTargetIndicator'), 'has updateFormTargetIndicator function');
-assert(popupCode.includes('function fillAllMatchingCards'), 'has fillAllMatchingCards function');
+assert(popupCode.includes('function fillCardToForm'), 'has fillCardToForm function');
 assert(popupCode.includes('function fillFieldToForm'), 'has fillFieldToForm function');
 assert(popupCode.includes('chrome.scripting.executeScript'), 'uses chrome.scripting.executeScript for injection');
 assert(popupCode.includes('editable: true'), 'FORM_TARGETS marks VK Ads as contenteditable');
@@ -368,16 +368,19 @@ assert(cssCode.includes('.field-fill-btn.error'), 'CSS has error state for fill 
 
 section('Form target bar');
 
-assert(popupCode.includes('formTargetBar'), 'creates formTargetBar element');
-assert(popupCode.includes('form-target-bar'), 'uses form-target-bar CSS class');
-assert(popupCode.includes('form-target-fill-btn'), 'creates fill button in target bar');
+assert(popupCode.includes('formTargetBar'), 'removes legacy formTargetBar element');
+assert(popupCode.includes('card-form-bar'), 'uses card-form-bar CSS class for in-card bar');
+assert(popupCode.includes('form-target-fill-btn'), 'creates fill button in card bar');
+assert(popupCode.includes('form-target-clear-btn'), 'creates clear button in card bar');
 assert(popupCode.includes("'Заполнить форму'"), 'fill button has correct label');
 assert(popupCode.includes("'Вставлено '"), 'shows fill count on success');
 assert(popupCode.includes("'Поля не найдены'"), 'shows error when no fields found');
+assert(popupCode.includes('function clearFormFields'), 'has clearFormFields function');
 
-assert(cssCode.includes('.form-target-bar'), 'CSS has form-target-bar styles');
-assert(cssCode.includes('.form-target-bar[data-platform="vk"]'), 'CSS has VK platform styling for bar');
+assert(cssCode.includes('.card-form-bar'), 'CSS has card-form-bar styles');
+assert(cssCode.includes('.card-form-bar[data-platform="vk"]'), 'CSS has VK platform styling for card bar');
 assert(cssCode.includes('.form-target-fill-btn'), 'CSS has fill button styles');
+assert(cssCode.includes('.form-target-clear-btn'), 'CSS has clear button styles');
 assert(cssCode.includes('.form-target-fill-btn.success'), 'CSS has success state for fill button');
 assert(cssCode.includes('.form-target-fill-btn.error'), 'CSS has error state for fill button');
 
