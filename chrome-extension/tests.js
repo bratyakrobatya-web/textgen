@@ -607,18 +607,20 @@ assert(tItem3.long_description === 'В лимите', 'truncate leaves short lon
 
 section('Long description structure (benefits first)');
 
-assert(popupCode.includes('Мы предлагаем:'), 'prompt specifies benefits section');
-assert(popupCode.includes('Ваши задачи:'), 'prompt specifies tasks section');
-assert(popupCode.includes('ОБЕ секции ОБЯЗАТЕЛЬНЫ'), 'prompt requires both sections');
-assert(popupCode.includes('55% выгоды'), 'prompt specifies balance ratio');
+assert(popupCode.includes('Мы предлагаем:'), 'prompt specifies benefits section for balanced/formal');
+assert(popupCode.includes('Ваши задачи:'), 'prompt specifies tasks section for balanced/formal');
+assert(popupCode.includes('ОБЕ секции ОБЯЗАТЕЛЬНЫ'), 'prompt requires both sections for balanced/formal');
+assert(popupCode.includes('55% выгоды'), 'prompt specifies balance ratio for balanced/formal');
 assert(popupCode.includes('МАКСИМУМ 450 символов'), 'prompt sets 450 char hard limit for long_description');
 assert(popupCode.includes('НЕ ставь пробелы в конце строк'), 'prompt forbids trailing spaces');
 assert(popupCode.includes('3-5 эмодзи') && popupCode.includes('Креативный'), 'creative style allows 3-5 emoji');
 assert(popupCode.includes('2-3 эмодзи') && popupCode.includes('Сбалансированный'), 'balanced style allows 2-3 emoji');
 assert(popupCode.includes('1-2 эмодзи') && popupCode.includes('Формальный'), 'formal style allows 1-2 emoji');
 assert(popupCode.includes('НИКОГДА не ставь эмодзи в начало строки'), 'creative style forbids emoji at line start');
-assert(popupCode.includes('НИКОГДА эмодзи в начале строки'), 'vk_universal prompt forbids emoji at line start');
-assert(popupCode.includes('«— »') || popupCode.includes('«— » (тире)'), 'prompt requires — (dash) for bullet markers');
+assert(popupCode.includes('НИКОГДА не ставь эмодзи в начало строки') && popupCode.includes('НИКОГДА эмодзи в начале строки'), 'vk_universal also forbids emoji at line start');
+assert(popupCode.includes('структура свободная') || popupCode.includes('Структура long_description СВОБОДНАЯ'), 'creative style has free-form long_description');
+assert(popupCode.includes('одной строкой в конце'), 'creative style: tasks as one line at the end');
+assert(popupCode.includes('В КОНЦЕ предложений'), 'creative style: emoji at end of sentences');
 
 // ========================
 // 30. fixLineStartEmoji
