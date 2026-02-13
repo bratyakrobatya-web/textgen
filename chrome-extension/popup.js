@@ -141,11 +141,39 @@ function normalizeAdWhitespace(item) {
     for (const f of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) {
         if (!item[f]) continue;
         item[f] = item[f]
+            .replace(/\r\n?/g, '\n')                 // normalize \r\n and bare \r
+            .replace(/\u00A0/g, ' ')                  // non-breaking space → regular
+            .replace(/[\t\v\f]/g, ' ')                // tabs and form feeds
+            .replace(/ +\n/g, '\n')                    // trailing spaces before newline
+            .replace(/\n +/g, '\n')                    // leading spaces after newline
             .split('\n')
-            .map(line => line.replace(/\t/g, ' ').replace(/ {2,}/g, ' ').trim())
+            .map(line => line.replace(/ {2,}/g, ' ').trim())
             .join('\n')
             .replace(/\n{3,}/g, '\n')
             .trim();
+    }
+}
+
+// --- Hard truncation to platform char limits ---
+function truncateToLimits(item) {
+    const platform = PLATFORMS[item.system];
+    if (!platform) return;
+    for (const f of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) {
+        if (!item[f] || !platform[f]) continue;
+        const max = platform[f][1];
+        if (item[f].length > max) {
+            // Try to cut at last complete line that fits
+            let cut = item[f].substring(0, max);
+            const lastNl = cut.lastIndexOf('\n');
+            const lastDot = cut.lastIndexOf('.');
+            const lastExcl = cut.lastIndexOf('!');
+            const breakAt = Math.max(lastNl, lastDot, lastExcl);
+            if (breakAt > max * 0.6) {
+                item[f] = item[f].substring(0, breakAt + 1).trim();
+            } else {
+                item[f] = cut.trim();
+            }
+        }
     }
 }
 
@@ -193,7 +221,7 @@ const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специа
 
 Рекламные системы и лимиты (все лимиты с пробелами):
 VK:
-- vk_universal: заголовок 3–40, текст (короткое описание) 3–90, длинное описание (long_description) 3–500, текст рядом с кнопкой (button_text) 3–30. В длинном описании используй одинарные переносы строк (\\n, не \\n\\n). Эмодзи: до 3 в long_description, до 2 в text, запрещены в headline и button_text.
+- vk_universal: заголовок 3–40, текст (короткое описание) 3–90, длинное описание (long_description) МАКСИМУМ 450 символов с пробелами (жёсткий лимит — ни символа больше!), текст рядом с кнопкой (button_text) 3–30. Структура long_description: 1) вводная фраза, 2) блок «Предлагаем:» / «Мы предлагаем:» — перечисли выгоды (зарплата, график, бонусы, ДМС), 3) блок «Обязанности:» / «Ваши задачи:» — кратко перечисли задачи. Сначала выгоды, потом обязанности. Используй одинарные переносы строк (\\n, не \\n\\n). НЕ ставь пробелы в конце строк перед переносом. Эмодзи: до 3 в long_description, до 2 в text, запрещены в headline и button_text.
 - vk_site: заголовок 3–25, текст 3–90
 - vk_lead: заголовок 3–60, текст 3–220
 - vk_carousel: заголовок 3–40, текст 3–47
@@ -526,6 +554,7 @@ async function generateAdTexts() {
                 sanitizeVkEmoji(t);
                 normalizeAdWhitespace(t);
                 stripExcessEmoji(t, 5);
+                truncateToLimits(t);
             }
         });
         const entry = {
@@ -594,12 +623,13 @@ async function generateCardVariant(cardIndex) {
         const newItem = (parsed.texts || [])[0];
         if (!newItem) throw new Error('Пустой ответ');
 
-        // Enforce VK emoji rules
+        // Enforce VK emoji rules + limits
         const varGroup = PLATFORM_GROUP[item.system] || '';
         if (varGroup === 'vk') {
             sanitizeVkEmoji(newItem);
             normalizeAdWhitespace(newItem);
             stripExcessEmoji(newItem, 5);
+            truncateToLimits(newItem);
         }
 
         // Save current DOM edits before switching
@@ -886,11 +916,12 @@ async function shortenCard(cardIndex) {
         if (parsed.long_description) item.long_description = parsed.long_description;
         if (parsed.button_text) item.button_text = parsed.button_text;
 
-        // Enforce VK emoji + whitespace rules after shorten
+        // Enforce VK emoji + whitespace rules + limits after shorten
         if (isVk) {
             sanitizeVkEmoji(item);
             normalizeAdWhitespace(item);
             stripExcessEmoji(item, 5);
+            truncateToLimits(item);
         }
 
         lastResults.texts[cardIndex] = item;

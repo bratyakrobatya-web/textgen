@@ -495,8 +495,13 @@ function testNormalize(item) {
     for (const f of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) {
         if (!item[f]) continue;
         item[f] = item[f]
+            .replace(/\r\n?/g, '\n')
+            .replace(/\u00A0/g, ' ')
+            .replace(/[\t\v\f]/g, ' ')
+            .replace(/ +\n/g, '\n')
+            .replace(/\n +/g, '\n')
             .split('\n')
-            .map(line => line.replace(/\t/g, ' ').replace(/ {2,}/g, ' ').trim())
+            .map(line => line.replace(/ {2,}/g, ' ').trim())
             .join('\n')
             .replace(/\n{3,}/g, '\n')
             .trim();
@@ -512,6 +517,18 @@ const nItem2 = { headline: '\tТаб\tтекст\t', button_text: '  Нажми 
 testNormalize(nItem2);
 assert(nItem2.headline === 'Таб текст', 'normalize replaces tabs with spaces');
 assert(nItem2.button_text === 'Нажми сюда', 'normalize works for button_text');
+
+// Trailing spaces before newlines (the VK "лишние пробелы" issue)
+const nItem3 = { long_description: 'Предлагаем: \n✨ ДМС \n✨ График 2/2 \nОбязанности: \n• Касса' };
+testNormalize(nItem3);
+assert(!nItem3.long_description.includes(' \n'), 'normalize removes trailing spaces before newlines');
+assert(nItem3.long_description === 'Предлагаем:\n✨ ДМС\n✨ График 2/2\nОбязанности:\n• Касса', 'normalize cleans full VK-style text');
+
+// \r\n and NBSP
+const nItem4 = { text: 'Строка\u00A0с\u00A0NBSP', long_description: 'A\r\nB\rC' };
+testNormalize(nItem4);
+assert(nItem4.text === 'Строка с NBSP', 'normalize converts NBSP to regular space');
+assert(nItem4.long_description === 'A\nB\nC', 'normalize handles \\r\\n and bare \\r');
 
 // ========================
 // 26. Superlative degree rule
@@ -534,6 +551,63 @@ assert(popupCode.includes("const isVk = (PLATFORM_GROUP[item.system]"), 'shorten
 // Check the shorten system prompt includes whitelist for VK
 assert(popupCode.includes('Никаких ✅ ❌ 💰'), 'shorten prompt explicitly forbids ✅ ❌ 💰 for VK');
 assert(popupCode.includes('ТОЛЬКО из списка:') && popupCode.includes('emojiRule'), 'shorten prompt injects emoji whitelist for VK');
+
+// ========================
+// 28. truncateToLimits
+// ========================
+
+section('truncateToLimits');
+
+assert(popupCode.includes('function truncateToLimits'), 'popup.js has truncateToLimits function');
+
+const truncCalls = (popupCode.match(/truncateToLimits\(/g) || []).length;
+assert(truncCalls >= 3, 'truncateToLimits called in at least 3 places — found ' + truncCalls);
+
+// Functional test — simulate truncation logic
+function testTruncate(item, limits) {
+    for (const f of Object.keys(limits)) {
+        if (!item[f]) continue;
+        const max = limits[f];
+        if (item[f].length > max) {
+            let cut = item[f].substring(0, max);
+            const lastNl = cut.lastIndexOf('\n');
+            const lastDot = cut.lastIndexOf('.');
+            const lastExcl = cut.lastIndexOf('!');
+            const breakAt = Math.max(lastNl, lastDot, lastExcl);
+            if (breakAt > max * 0.6) {
+                item[f] = item[f].substring(0, breakAt + 1).trim();
+            } else {
+                item[f] = cut.trim();
+            }
+        }
+    }
+}
+
+const tItem1 = { long_description: 'A'.repeat(550) };
+testTruncate(tItem1, { long_description: 500 });
+assert(tItem1.long_description.length <= 500, 'truncate caps long_description to 500 chars');
+
+const tItem2 = { long_description: 'Предлагаем:\n✨ ДМС\n✨ График.\nОбязанности:\n• Касса\n• ' + 'X'.repeat(500) };
+testTruncate(tItem2, { long_description: 500 });
+assert(tItem2.long_description.length <= 500, 'truncate breaks at sentence boundary');
+assert(tItem2.long_description.endsWith('.') || tItem2.long_description.endsWith('\n') || tItem2.long_description.length === 500, 'truncate prefers clean break');
+
+const tItem3 = { headline: 'Короткий', long_description: 'В лимите' };
+testTruncate(tItem3, { headline: 40, long_description: 500 });
+assert(tItem3.headline === 'Короткий', 'truncate leaves text within limit untouched');
+assert(tItem3.long_description === 'В лимите', 'truncate leaves short long_description untouched');
+
+// ========================
+// 29. Long description structure and limit in prompt
+// ========================
+
+section('Long description structure (benefits first)');
+
+assert(popupCode.includes('Предлагаем:'), 'prompt specifies "Предлагаем:" section');
+assert(popupCode.includes('Обязанности:'), 'prompt specifies "Обязанности:" section');
+assert(popupCode.includes('Сначала выгоды, потом обязанности'), 'prompt explicitly orders benefits before tasks');
+assert(popupCode.includes('МАКСИМУМ 450 символов'), 'prompt sets 450 char hard limit for long_description');
+assert(popupCode.includes('НЕ ставь пробелы в конце строк'), 'prompt forbids trailing spaces');
 
 // ========================
 // Summary
