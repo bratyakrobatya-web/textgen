@@ -500,7 +500,7 @@ function testNormalize(item) {
         if (!item[f]) continue;
         item[f] = item[f]
             .replace(/\r\n?/g, '\n')
-            .replace(/\u00A0/g, ' ')
+            .replace(/[\u00A0\u1680\u2000-\u200B\u2028\u2029\u202F\u205F\u3000\uFEFF]/g, ' ')
             .replace(/[\t\v\f]/g, ' ')
             .replace(/ +\n/g, '\n')
             .replace(/\n +/g, '\n')
@@ -613,7 +613,72 @@ assert(popupCode.includes('ОБЕ секции ОБЯЗАТЕЛЬНЫ'), 'prompt
 assert(popupCode.includes('55% выгоды'), 'prompt specifies balance ratio');
 assert(popupCode.includes('МАКСИМУМ 450 символов'), 'prompt sets 450 char hard limit for long_description');
 assert(popupCode.includes('НЕ ставь пробелы в конце строк'), 'prompt forbids trailing spaces');
-assert(popupCode.includes('3-5 эмодзи') && popupCode.includes('Креативный'), 'creative style uses 3-5 emoji as bullet markers');
+assert(popupCode.includes('3-5 эмодзи') && popupCode.includes('Креативный'), 'creative style allows 3-5 emoji');
+assert(popupCode.includes('НИКОГДА не ставь эмодзи в начало строки'), 'creative style forbids emoji at line start');
+assert(popupCode.includes('НИКОГДА эмодзи в начале строки'), 'vk_universal prompt forbids emoji at line start');
+assert(popupCode.includes('«— »') || popupCode.includes('«— » (тире)'), 'prompt requires — (dash) for bullet markers');
+
+// ========================
+// 30. fixLineStartEmoji
+// ========================
+
+section('fixLineStartEmoji');
+
+assert(popupCode.includes('function fixLineStartEmoji'), 'popup.js has fixLineStartEmoji function');
+
+const fixCalls = (popupCode.match(/fixLineStartEmoji\(/g) || []).length;
+assert(fixCalls >= 4, 'fixLineStartEmoji called in at least 4 places (definition + 3 paths) — found ' + fixCalls);
+
+// Functional tests with local copy of the regex
+const LINE_START_EMOJI_RE = /^(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*\s*/u;
+function testFixLineStartEmoji(item) {
+    for (const f of ['text', 'long_description']) {
+        if (!item[f]) continue;
+        item[f] = item[f].split('\n').map(line => line.replace(LINE_START_EMOJI_RE, '— ')).join('\n');
+    }
+}
+
+const fItem1 = { long_description: '📌 Оформление по ТК РФ\n📌 ДМС\n📌 График 2/2' };
+testFixLineStartEmoji(fItem1);
+assert(fItem1.long_description === '— Оформление по ТК РФ\n— ДМС\n— График 2/2', 'replaces line-start emoji with —');
+
+const fItem2 = { long_description: 'Мы предлагаем:\n✨ ДМС и бонусы\nВаши задачи:\n🔧 Работа на кассе' };
+testFixLineStartEmoji(fItem2);
+assert(fItem2.long_description === 'Мы предлагаем:\n— ДМС и бонусы\nВаши задачи:\n— Работа на кассе', 'fixes mixed emoji/text lines');
+
+const fItem3 = { long_description: '— 📌 ДМС и бонусы\nОбычный текст без эмодзи' };
+testFixLineStartEmoji(fItem3);
+assert(fItem3.long_description === '— 📌 ДМС и бонусы\nОбычный текст без эмодзи', 'leaves — dash lines and plain text unchanged');
+
+const fItem4 = { text: '🔥Горячая вакансия', long_description: '📌Без пробела' };
+testFixLineStartEmoji(fItem4);
+assert(fItem4.text === '— Горячая вакансия', 'fixes emoji without space after it in text');
+assert(fItem4.long_description === '— Без пробела', 'fixes emoji without space in long_description');
+
+const fItem5 = { headline: '📌 Заголовок', long_description: 'Текст без эмодзи в начале' };
+testFixLineStartEmoji(fItem5);
+assert(fItem5.headline === '📌 Заголовок', 'does NOT touch headline (only text and long_description)');
+assert(fItem5.long_description === 'Текст без эмодзи в начале', 'plain text unchanged');
+
+// ========================
+// 31. Unicode whitespace in normalizeAdWhitespace
+// ========================
+
+section('Unicode whitespace normalization');
+
+assert(popupCode.includes('\\u2000-\\u200B') || popupCode.includes('\\u2000'), 'normalizeAdWhitespace handles Unicode spaces (U+2000 range)');
+assert(popupCode.includes('\\u202F'), 'normalizeAdWhitespace handles narrow no-break space');
+assert(popupCode.includes('\\u3000'), 'normalizeAdWhitespace handles ideographic space');
+assert(popupCode.includes('\\uFEFF'), 'normalizeAdWhitespace handles BOM/ZWNBSP');
+
+const nItem5 = { long_description: 'Текст\u2003с\u2003em-space', text: 'Тонкий\u2009пробел' };
+testNormalize(nItem5);
+assert(nItem5.long_description === 'Текст с em-space', 'normalize converts em-space (U+2003) to regular space');
+assert(nItem5.text === 'Тонкий пробел', 'normalize converts thin space (U+2009) to regular space');
+
+const nItem6 = { long_description: 'A\u200BB\u3000C\uFEFFD' };
+testNormalize(nItem6);
+assert(nItem6.long_description === 'A B C D', 'normalize converts zero-width space, ideographic space, BOM to regular space');
 
 // ========================
 // Summary
