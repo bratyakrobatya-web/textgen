@@ -114,6 +114,41 @@ function stripExcessEmoji(item, max) {
     }
 }
 
+// --- VK emoji whitelist enforcement ---
+const VK_EMOJI_WHITELIST = new Set([
+    '📌','💼','🏢','📋','🔥','⭐','🎯','👋','📞','🚀',
+    '✨','💪','🤝','📍','🕐','🔧','⚡','📝','🎓','💡',
+    '🏆','🩺','☕','🍕','👍','👏','🙌','📊','📈','📅',
+    '💻','📱','💎','🏅','🥇','🎉','🎁','🔑','🌟','🔔',
+    '📢','🎨','⚙','🛡','🔒','😊','😉','👀','🎤','📦'
+]);
+
+function sanitizeVkEmoji(item) {
+    // Strip ALL emoji from headline and button_text (VK forbids them there)
+    for (const f of ['headline', 'button_text']) {
+        if (item[f]) item[f] = item[f].replace(EMOJI_RE, '').replace(/  +/g, ' ').trim();
+    }
+    // Replace non-whitelisted emoji in text and long_description
+    for (const f of ['text', 'long_description']) {
+        if (!item[f]) continue;
+        item[f] = item[f].replace(EMOJI_RE, m => VK_EMOJI_WHITELIST.has(m) ? m : '');
+        item[f] = item[f].replace(/  +/g, ' ').trim();
+    }
+}
+
+// --- Whitespace normalization (VK rejects extra spaces) ---
+function normalizeAdWhitespace(item) {
+    for (const f of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) {
+        if (!item[f]) continue;
+        item[f] = item[f]
+            .split('\n')
+            .map(line => line.replace(/\t/g, ' ').replace(/ {2,}/g, ' ').trim())
+            .join('\n')
+            .replace(/\n{3,}/g, '\n')
+            .trim();
+    }
+}
+
 // --- SVG Icons ---
 const SVG_CLIPBOARD = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>';
 const SVG_CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -143,7 +178,7 @@ const AD_SYSTEM_PROMPT = `Ты опытный копирайтер, специа
 - ЗАПРЕЩЕНО: персонализация (обращение по имени, указание конкретного возраста >19 лет, пола, дня рождения)
 - ЗАПРЕЩЕНО: орфографические и грамматические ошибки
 - ЗАПРЕЩЕНО: эмодзи в заголовках (headline), тексте рядом с кнопкой (button_text) и юридической информации
-- ЗАПРЕЩЕНО: превосходная степень без подтверждения («Самый лучший», «Номер 1», «Лучшие условия»)
+- ЗАПРЕЩЕНО: превосходная степень прилагательных без документального подтверждения (формы на -ейший/-айший, конструкции с «самый»): «крупнейший», «крупнейшая», «лучший», «лучшие условия», «самый надёжный», «ведущий», «Номер 1». Заменяй нейтральными: «крупная сеть» вместо «крупнейшая», «хорошие условия» вместо «лучшие»
 - ЗАПРЕЩЕНО: текстовые смайлы (:), ((, ;) и т.п.) — только эмодзи из разрешённого списка
 - ЗАПРЕЩЕНО: ЗаБоРЧиК, р а з р я д к а, $имволы и цифры внутри слов
 - Текст объявления НЕ должен быть продолжением заголовка — заголовок и текст самостоятельны
@@ -479,7 +514,7 @@ async function generateAdTexts() {
 
         const parsed = parseJsonResponse(rawText);
         const texts = parsed.texts || [];
-        // Collapse double newlines to single for verbose platforms + emoji limit
+        // Post-process: collapse double newlines, sanitize emoji & whitespace
         texts.forEach(t => {
             if (t.system === 'telegram_seeds' || t.system === 'vk_universal') {
                 for (const k of ['text', 'long_description']) {
@@ -487,7 +522,11 @@ async function generateAdTexts() {
                 }
             }
             const group = PLATFORM_GROUP[t.system] || '';
-            if (group === 'vk') stripExcessEmoji(t, 5);
+            if (group === 'vk') {
+                sanitizeVkEmoji(t);
+                normalizeAdWhitespace(t);
+                stripExcessEmoji(t, 5);
+            }
         });
         const entry = {
             id: Date.now(),
@@ -555,9 +594,13 @@ async function generateCardVariant(cardIndex) {
         const newItem = (parsed.texts || [])[0];
         if (!newItem) throw new Error('Пустой ответ');
 
-        // Enforce VK emoji limit
+        // Enforce VK emoji rules
         const varGroup = PLATFORM_GROUP[item.system] || '';
-        if (varGroup === 'vk') stripExcessEmoji(newItem, 5);
+        if (varGroup === 'vk') {
+            sanitizeVkEmoji(newItem);
+            normalizeAdWhitespace(newItem);
+            stripExcessEmoji(newItem, 5);
+        }
 
         // Save current DOM edits before switching
         saveVariantFromDOM(card, item);
@@ -814,7 +857,11 @@ async function shortenCard(cardIndex) {
     }
     if (item.button_text && platform.button_text) limits.push('Текст кнопки: ЖЁСТКИЙ МАКСИМУМ ' + platform.button_text[1] + ' символов с пробелами');
 
-    const shortenSystem = 'Ты — редактор-сократитель. Задача — сократить рекламный текст, строго уложившись в лимиты символов.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных. Считай каждый символ включая пробелы. НЕ ПРЕВЫШАЙ указанные лимиты.\nМаксимум 5 эмодзи на всё объявление.\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"...","long_description":"...(если есть)","button_text":"...(если есть)"}';
+    const isVk = (PLATFORM_GROUP[item.system] || '') === 'vk';
+    const emojiRule = isVk
+        ? '\nЭмодзи (СТРОГО): максимум 5 на всё объявление. Используй ТОЛЬКО из списка: 📌 💼 🏢 📋 🔥 ⭐ 🎯 👋 📞 🚀 ✨ 💪 🤝 📍 🕐 🔧 ⚡ 📝 🎓 💡 🏆 🩺 ☕ 🍕 👍 👏 🙌 📊 📈 📅 💻 📱 💎 🏅 🥇 🎉 🎁 🔑 🌟 🔔 📢 🎨 ⚙ 🛡 🔒 😊 😉 👀 🎤 📦. Эмодзи ЗАПРЕЩЕНЫ в headline и button_text. Никаких ✅ ❌ 💰 и других — только из списка выше.\nЗАПРЕЩЕНО: превосходная степень (крупнейший, лучший, самый...). Без лишних пробелов.'
+        : '\nМаксимум 5 эмодзи на всё объявление.';
+    const shortenSystem = 'Ты — редактор-сократитель. Задача — сократить рекламный текст, строго уложившись в лимиты символов.\nПРАВИЛА: Убери лишнее. Короткие синонимы. Без причастных оборотов. Без вводных. Считай каждый символ включая пробелы. НЕ ПРЕВЫШАЙ указанные лимиты.' + emojiRule + '\nФормат ответа — строго JSON: {"headline":"...","subheadline":"...(если есть)","text":"...","long_description":"...(если есть)","button_text":"...(если есть)"}';
     const shortenUser = 'Площадка: ' + platform.label + ' (' + item.system + ')\nТЕКУЩИЕ ТЕКСТЫ:\nЗаголовок: ' + (item.headline || '') +
         (item.subheadline ? '\nПодзаголовок: ' + item.subheadline : '') +
         '\nТекст: ' + (item.text || '') +
@@ -839,9 +886,12 @@ async function shortenCard(cardIndex) {
         if (parsed.long_description) item.long_description = parsed.long_description;
         if (parsed.button_text) item.button_text = parsed.button_text;
 
-        // Enforce VK emoji limit after shorten
-        const shrGroup = PLATFORM_GROUP[item.system] || '';
-        if (shrGroup === 'vk') stripExcessEmoji(item, 5);
+        // Enforce VK emoji + whitespace rules after shorten
+        if (isVk) {
+            sanitizeVkEmoji(item);
+            normalizeAdWhitespace(item);
+            stripExcessEmoji(item, 5);
+        }
 
         lastResults.texts[cardIndex] = item;
         if (adHistory[historyIndex]) {

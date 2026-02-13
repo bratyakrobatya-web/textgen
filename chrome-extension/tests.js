@@ -433,6 +433,109 @@ assert(popupCode.includes('Допустимые эмодзи для HR'), 'promp
 assert(popupCode.includes('ТОЛЬКО HR'), 'prompt specifies HR-only topic');
 
 // ========================
+// 24. VK emoji whitelist enforcement
+// ========================
+
+section('VK emoji whitelist (sanitizeVkEmoji)');
+
+assert(popupCode.includes('const VK_EMOJI_WHITELIST'), 'popup.js has VK_EMOJI_WHITELIST set');
+assert(popupCode.includes('function sanitizeVkEmoji'), 'popup.js has sanitizeVkEmoji function');
+// Verify whitelist contains only approved emoji and not ✅ or 💰
+assert(popupCode.includes("'📌'") && popupCode.includes("'🔥'"), 'whitelist contains approved HR emoji');
+// Extract Set definition (between "new Set([" and "])") to check contents
+const wlMatch = popupCode.match(/VK_EMOJI_WHITELIST\s*=\s*new Set\(\[([\s\S]*?)\]\)/);
+assert(wlMatch, 'found VK_EMOJI_WHITELIST Set definition');
+const wlDef = wlMatch ? wlMatch[1] : '';
+assert(!wlDef.includes('✅'), 'whitelist Set does NOT contain ✅');
+assert(!wlDef.includes('💰'), 'whitelist Set does NOT contain 💰');
+
+// Verify sanitizeVkEmoji is called in all 3 post-processing paths
+const sanitizeCalls = (popupCode.match(/sanitizeVkEmoji\(/g) || []).length;
+assert(sanitizeCalls >= 3, 'sanitizeVkEmoji called in at least 3 places (gen, variant, shorten) — found ' + sanitizeCalls);
+
+// Functional test of sanitize logic
+const EMOJI_RE_T = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*/gu;
+const VK_WL = new Set(['📌','💼','🏢','📋','🔥','⭐','🎯','👋','📞','🚀','✨','💪','🤝','📍','🕐','🔧','⚡','📝','🎓','💡','🏆','🩺','☕','🍕','👍','👏','🙌','📊','📈','📅','💻','📱','💎','🏅','🥇','🎉','🎁','🔑','🌟','🔔','📢','🎨','⚙','🛡','🔒','😊','😉','👀','🎤','📦']);
+
+function testSanitize(item) {
+    for (const f of ['headline', 'button_text']) {
+        if (item[f]) item[f] = item[f].replace(EMOJI_RE_T, '').replace(/  +/g, ' ').trim();
+    }
+    for (const f of ['text', 'long_description']) {
+        if (!item[f]) continue;
+        item[f] = item[f].replace(EMOJI_RE_T, m => VK_WL.has(m) ? m : '');
+        item[f] = item[f].replace(/  +/g, ' ').trim();
+    }
+}
+
+const sItem1 = { headline: '🔥 Работа', text: '✅ Офис ✨ Зарплата', long_description: '💰 Бонус 📌 Рядом' };
+testSanitize(sItem1);
+assert(sItem1.headline === 'Работа', 'sanitize removes emoji from headline');
+assert(sItem1.text === 'Офис ✨ Зарплата', 'sanitize removes ✅ but keeps ✨ in text');
+assert(sItem1.long_description === 'Бонус 📌 Рядом', 'sanitize removes 💰 but keeps 📌 in long_description');
+
+const sItem2 = { headline: 'Без эмодзи', text: '📌 💼 🏢', button_text: '✨ Нажми' };
+testSanitize(sItem2);
+assert(sItem2.headline === 'Без эмодзи', 'sanitize leaves clean headline');
+assert(sItem2.text === '📌 💼 🏢', 'sanitize keeps all whitelisted emoji');
+assert(sItem2.button_text === 'Нажми', 'sanitize removes emoji from button_text');
+
+// ========================
+// 25. Whitespace normalization
+// ========================
+
+section('Whitespace normalization (normalizeAdWhitespace)');
+
+assert(popupCode.includes('function normalizeAdWhitespace'), 'popup.js has normalizeAdWhitespace function');
+
+const normCalls = (popupCode.match(/normalizeAdWhitespace\(/g) || []).length;
+assert(normCalls >= 3, 'normalizeAdWhitespace called in at least 3 places — found ' + normCalls);
+
+function testNormalize(item) {
+    for (const f of ['headline', 'subheadline', 'text', 'long_description', 'button_text']) {
+        if (!item[f]) continue;
+        item[f] = item[f]
+            .split('\n')
+            .map(line => line.replace(/\t/g, ' ').replace(/ {2,}/g, ' ').trim())
+            .join('\n')
+            .replace(/\n{3,}/g, '\n')
+            .trim();
+    }
+}
+
+const nItem1 = { text: '  Привет  мир  ', long_description: 'Строка 1  \n  Строка 2\n\n\nСтрока 3' };
+testNormalize(nItem1);
+assert(nItem1.text === 'Привет мир', 'normalize trims and collapses spaces');
+assert(nItem1.long_description === 'Строка 1\nСтрока 2\nСтрока 3', 'normalize trims lines, collapses 3+ newlines');
+
+const nItem2 = { headline: '\tТаб\tтекст\t', button_text: '  Нажми  сюда  ' };
+testNormalize(nItem2);
+assert(nItem2.headline === 'Таб текст', 'normalize replaces tabs with spaces');
+assert(nItem2.button_text === 'Нажми сюда', 'normalize works for button_text');
+
+// ========================
+// 26. Superlative degree rule
+// ========================
+
+section('Superlative degree rule');
+
+assert(popupCode.includes('крупнейший'), 'prompt explicitly forbids "крупнейший"');
+assert(popupCode.includes('крупнейшая'), 'prompt explicitly forbids "крупнейшая"');
+assert(popupCode.includes('-ейший/-айший'), 'prompt mentions superlative suffixes');
+assert(popupCode.includes('крупная сеть'), 'prompt gives neutral alternative example');
+
+// ========================
+// 27. Shorten prompt includes VK emoji whitelist
+// ========================
+
+section('Shorten prompt VK whitelist');
+
+assert(popupCode.includes("const isVk = (PLATFORM_GROUP[item.system]"), 'shortenCard checks if platform is VK');
+// Check the shorten system prompt includes whitelist for VK
+assert(popupCode.includes('Никаких ✅ ❌ 💰'), 'shorten prompt explicitly forbids ✅ ❌ 💰 for VK');
+assert(popupCode.includes('ТОЛЬКО из списка:') && popupCode.includes('emojiRule'), 'shorten prompt injects emoji whitelist for VK');
+
+// ========================
 // Summary
 // ========================
 
