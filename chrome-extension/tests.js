@@ -614,6 +614,8 @@ assert(popupCode.includes('55% выгоды'), 'prompt specifies balance ratio')
 assert(popupCode.includes('МАКСИМУМ 450 символов'), 'prompt sets 450 char hard limit for long_description');
 assert(popupCode.includes('НЕ ставь пробелы в конце строк'), 'prompt forbids trailing spaces');
 assert(popupCode.includes('3-5 эмодзи') && popupCode.includes('Креативный'), 'creative style allows 3-5 emoji');
+assert(popupCode.includes('2-3 эмодзи') && popupCode.includes('Сбалансированный'), 'balanced style allows 2-3 emoji');
+assert(popupCode.includes('1-2 эмодзи') && popupCode.includes('Формальный'), 'formal style allows 1-2 emoji');
 assert(popupCode.includes('НИКОГДА не ставь эмодзи в начало строки'), 'creative style forbids emoji at line start');
 assert(popupCode.includes('НИКОГДА эмодзи в начале строки'), 'vk_universal prompt forbids emoji at line start');
 assert(popupCode.includes('«— »') || popupCode.includes('«— » (тире)'), 'prompt requires — (dash) for bullet markers');
@@ -630,21 +632,22 @@ const fixCalls = (popupCode.match(/fixLineStartEmoji\(/g) || []).length;
 assert(fixCalls >= 4, 'fixLineStartEmoji called in at least 4 places (definition + 3 paths) — found ' + fixCalls);
 
 // Functional tests with local copy of the regex
-const LINE_START_EMOJI_RE = /^(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*\s*/u;
+// Regex with capture group — preserves emoji after dash
+const LINE_START_EMOJI_RE = /^((?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*)\s*/u;
 function testFixLineStartEmoji(item) {
     for (const f of ['text', 'long_description']) {
         if (!item[f]) continue;
-        item[f] = item[f].split('\n').map(line => line.replace(LINE_START_EMOJI_RE, '— ')).join('\n');
+        item[f] = item[f].split('\n').map(line => line.replace(LINE_START_EMOJI_RE, '— $1 ')).join('\n');
     }
 }
 
 const fItem1 = { long_description: '📌 Оформление по ТК РФ\n📌 ДМС\n📌 График 2/2' };
 testFixLineStartEmoji(fItem1);
-assert(fItem1.long_description === '— Оформление по ТК РФ\n— ДМС\n— График 2/2', 'replaces line-start emoji with —');
+assert(fItem1.long_description === '— 📌 Оформление по ТК РФ\n— 📌 ДМС\n— 📌 График 2/2', 'moves line-start emoji after — (preserves emoji)');
 
 const fItem2 = { long_description: 'Мы предлагаем:\n✨ ДМС и бонусы\nВаши задачи:\n🔧 Работа на кассе' };
 testFixLineStartEmoji(fItem2);
-assert(fItem2.long_description === 'Мы предлагаем:\n— ДМС и бонусы\nВаши задачи:\n— Работа на кассе', 'fixes mixed emoji/text lines');
+assert(fItem2.long_description === 'Мы предлагаем:\n— ✨ ДМС и бонусы\nВаши задачи:\n— 🔧 Работа на кассе', 'moves emoji after dash in mixed lines');
 
 const fItem3 = { long_description: '— 📌 ДМС и бонусы\nОбычный текст без эмодзи' };
 testFixLineStartEmoji(fItem3);
@@ -652,8 +655,8 @@ assert(fItem3.long_description === '— 📌 ДМС и бонусы\nОбычн�
 
 const fItem4 = { text: '🔥Горячая вакансия', long_description: '📌Без пробела' };
 testFixLineStartEmoji(fItem4);
-assert(fItem4.text === '— Горячая вакансия', 'fixes emoji without space after it in text');
-assert(fItem4.long_description === '— Без пробела', 'fixes emoji without space in long_description');
+assert(fItem4.text === '— 🔥 Горячая вакансия', 'moves emoji after dash (no space case) in text');
+assert(fItem4.long_description === '— 📌 Без пробела', 'moves emoji after dash (no space case) in long_description');
 
 const fItem5 = { headline: '📌 Заголовок', long_description: 'Текст без эмодзи в начале' };
 testFixLineStartEmoji(fItem5);
