@@ -604,11 +604,13 @@ assert(tItem3.long_description === 'В лимите', 'truncate leaves short lon
 
 section('Long description structure (benefits first)');
 
-assert(popupCode.includes('Предлагаем:'), 'prompt specifies "Предлагаем:" section');
-assert(popupCode.includes('Обязанности:'), 'prompt specifies "Обязанности:" section');
-assert(popupCode.includes('Сначала выгоды, потом обязанности'), 'prompt explicitly orders benefits before tasks');
+assert(popupCode.includes('Мы предлагаем:'), 'prompt specifies benefits section');
+assert(popupCode.includes('Ваши задачи:'), 'prompt specifies tasks section');
+assert(popupCode.includes('ОБЕ секции ОБЯЗАТЕЛЬНЫ'), 'prompt requires both sections');
+assert(popupCode.includes('55% выгоды'), 'prompt specifies balance ratio');
 assert(popupCode.includes('МАКСИМУМ 450 символов'), 'prompt sets 450 char hard limit for long_description');
 assert(popupCode.includes('НЕ ставь пробелы в конце строк'), 'prompt forbids trailing spaces');
+assert(popupCode.includes('3-5 эмодзи') && popupCode.includes('Креативный'), 'creative style uses 3-5 emoji as bullet markers');
 
 // ========================
 // Summary
