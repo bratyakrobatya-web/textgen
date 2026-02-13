@@ -1002,12 +1002,12 @@ async function fillCardToForm(cardIndex, target) {
         const results = await chrome.scripting.executeScript({
             target: { tabId: target.tabId },
             func: (fields, selectorMap, isEditable) => {
+                function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
                 function fillElement(el, value) {
                     if (el.contentEditable === 'true' || isEditable) {
-                        el.focus();
-                        const sel = window.getSelection();
-                        sel.selectAllChildren(el);
-                        document.execCommand('insertText', false, value);
+                        // Convert \n to <p> blocks for ProseMirror
+                        const lines = value.split('\n');
+                        el.innerHTML = lines.map(l => '<p>' + (esc(l) || '<br>') + '</p>').join('');
                         el.dispatchEvent(new Event('input', { bubbles: true }));
                     } else {
                         const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -1137,13 +1137,12 @@ async function fillFieldToForm(btn) {
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: (value, selector, isEditable) => {
+                function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
                 const el = document.querySelector(selector);
                 if (!el) return { ok: false };
                 if (el.contentEditable === 'true' || isEditable) {
-                    el.focus();
-                    const sel = window.getSelection();
-                    sel.selectAllChildren(el);
-                    document.execCommand('insertText', false, value);
+                    const lines = value.split('\n');
+                    el.innerHTML = lines.map(l => '<p>' + (esc(l) || '<br>') + '</p>').join('');
                     el.dispatchEvent(new Event('input', { bubbles: true }));
                 } else {
                     const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
